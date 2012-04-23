@@ -1,0 +1,42 @@
+#!/bin/bash
+VERSION="0.2 alpha"
+CONFIGDIR="$HOME/etc/s/"
+KEYPATH="$HOME/.ssh/"    
+KEYFILE="id_rsa"
+
+function do_connect() {
+    source $CONFIGDIR$1
+    ssh -i $KEYPATH$KEYFILE $USER@$HOST
+}
+
+function show_config {
+    ls -A $CONFIGDIR | sort
+    exit
+}
+
+function show_help {
+    echo "s Version $VERSION — An ssh supertool "
+    echo "———"    
+    echo "usage: s [option]"
+    echo " s show — Show available configurations"
+    echo " s <configuration name> — Load configuration and ssh to remote acct/system"
+    echo " s help — Display this message"
+    exit
+}
+
+if [ ! $1 ]
+then 
+    show_help
+fi  
+
+if [ $1 = "help" ]
+then 
+    show_help
+fi
+
+if [ $1 = "show" ]
+then 
+    show_config
+fi
+
+do_connect $1
