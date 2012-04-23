@@ -1,0 +1,8 @@
+## Basics
+HOST="localhost"
+USER="user"                                     
+
+##Advanced
+
+#KEYFILE="id_rsa"
+#KEYPATH="/Users/groberts/.ssh/"
