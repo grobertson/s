@@ -10,7 +10,7 @@ function do_connect() {
 }
 
 function show_config {
-    ls -A $CONFIGDIR | sort
+    ls -A $CONFIGDIR | grep -v template | sort
     exit
 }
 
@@ -35,6 +35,11 @@ then
 fi
 
 if [ $1 = "show" ]
+then 
+    show_config
+fi
+
+if [ $1 = "list" ]
 then 
     show_config
 fi
