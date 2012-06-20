@@ -29,15 +29,19 @@
 #
 #
 
+One-line auto-install latest version from github:
+
+  wget https://raw.github.com/grobertson/s/master/bin/s -O /tmp/s && cd /tmp && chmod 700 /tmp/s && ./s --install system && rm -f /tmp/s
+
 To install s for just the current user:
 
-./s --install home
+  ./s --install home
 
 To install s for everyone (requires root, or at least write permissions on /usr/local/bin):
 
-./s --install system   
+  ./s --install system   
 
 To remove s from all likely install locations:
 
-./s --remove force
+  ./s --remove force
 
