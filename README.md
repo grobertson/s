@@ -3,6 +3,23 @@ s
 
 s is the dead-simple command line ssh configuration management tool you've always wanted. Built to do one thing well—remember ssh connections and recall them as simple, single word configuration aliases. Written in bash and licensed as freeBSD so you can use it nearly everywhere.  
 
+Installing s:
+
+From this directory:
+
+To install s for just the current user:
+	./s --install home
+
+To install s for everyone (requires root, or at least write permissions on /usr/local/bin):
+	./s --install system   
+
+Removing s:
+
+To remove s from all likely install locations:
+	./s --remove force	
+
+Usage:
+
 	usage: s [configuration_name|--save configuration_name][-i identity_file] user@host.com
 	s show — Show available configurations
 	s list — Show available configurations
@@ -11,6 +28,14 @@ s is the dead-simple command line ssh configuration management tool you've alway
 
 CHANGELOG:
 
+5/20/2012
+
+	*Self install './s --install (home|system)' 
+	*system option to --install uses least privledged bin ("/usr/local/bin/", "/usr/bin/", "/bin/" in order)
+	*Self uninstall './s --remove force' Removes from all likely places (home, local, user, /bin)
+	*Added INSTALL file
+	*Added install directions to README
+	
 5/19/2012
 
 	*freeBSD license added
