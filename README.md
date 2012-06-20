@@ -29,7 +29,9 @@ Usage:
 CHANGELOG:
 
 5/20/2012
-
+    
+	*Option to create/install/save a new 2048 bit keypair on a remote host 
+	*'s --addkey [-i existing_keyfile] user@host.com NewConfigName' (no -i will prompt for password) 
 	*Self install './s --install (home|system)' 
 	*system option to --install uses least privledged bin ("/usr/local/bin/", "/usr/bin/", "/bin/" in order)
 	*Self uninstall './s --remove force' Removes from all likely places (home, local, user, /bin)

@@ -31,7 +31,7 @@
 #
 #
 
-VERSION="0.9"
+VERSION="0.9.1"
 CONFIGDIR="$HOME/.s/"
 CONFIGFILE="$HOME/.sconfig"    
 
@@ -172,9 +172,34 @@ function save_config {
     #Currently unused, use fullpath in KEYFILE for now
     #echo '#KEYPATH=".ssh/"' >> $CONFIGDIR$OPT_SAVE
   fi
-  exit 0
 }
 
+function make_key {
+  # Could use more options, but works for making a simple 2048 bit key with or without passphrase
+  TEMPKEYNAME=_s_temp_key
+  TEMPKEYPATH=$KEYPATH
+  ssh-keygen -b 2048 -f $TEMPKEYPATH$TEMPKEYNAME
+  NEWKEYNAME=`shasum $TEMPKEYPATH$TEMPKEYNAME  | awk '{ print $1 }'`
+  mv $TEMPKEYPATH$TEMPKEYNAME $KEYPATH$NEWKEYNAME
+  mv $TEMPKEYPATH$TEMPKEYNAME.pub $KEYPATH$NEWKEYNAME.pub
+  rm -f $TEMPKEYPATH$TEMPKEYNAME
+  rm -f $TEMPKEYPATH$TEMPKEYNAME.pub
+  chmod 600 $KEYPATH$NEWKEYNAME
+  chmod 600 $KEYPATH$NEWKEYNAME.pub
+  echo "Your new ssh key is $KEYPATH$NEWKEYNAME"
+
+}
+
+function install_key {
+  PUBKEYSTRING=`cat $KEYPATH$NEWKEYNAME.pub`
+  echo $PUBKEYSTRING
+  #If an existing key was supplied, try it. If not ssh should ask for password
+  if [[ $OPT_KEYFILE != "" ]]; then
+    IOPT=" -i $OPT_KEYFILE "
+  fi
+  ssh $IOPT $OPT_USER@$OPT_HOST "echo '$PUBKEYSTRING' >> .ssh/authorized_keys"
+  OPT_KEYFILE=$KEYPATH$NEWKEYNAME
+}
 
 #Check to see if at least one argument was specified
 if [ $# -lt 1 ] ; then
@@ -210,14 +235,19 @@ do
                 ;;
             help) 
                 show_help
-                ;;    
+                ;;
+            addkey)
+                DO_ADDKEY="yes"
+                ;;
             install)
                 OPT_INSTALL="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
                 install
+                exit 0
                 ;;
             install=*)
                 OPT_INSTALL=${OPTARG#*=}
                 install
+                exit 0
                 ;;
             *)
                 if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
@@ -259,8 +289,11 @@ if [[ "$1" == *@* ]]; then
     IFS=$OIFS
     if [[ "$2" != "" ]]; then
       OPT_SAVE=$2
-      save_config
-      exit 0
+      if [[ $DO_ADDKEY == "yes" ]]; then
+        echo "Do addkey" 
+        make_key
+        install_key
+      fi
     fi
     # just do a connection here? remind user to save? 
     # what should this behavior be? "save(y/n), name:?"
