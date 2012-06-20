@@ -8,14 +8,17 @@ Installing s:
 From this directory:
 
 To install s for just the current user:
+
 	./s --install home
 
 To install s for everyone (requires root, or at least write permissions on /usr/local/bin):
+
 	./s --install system   
 
 Removing s:
 
 To remove s from all likely install locations:
+	
 	./s --remove force	
 
 Usage:
