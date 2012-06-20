@@ -17,7 +17,7 @@ CHANGELOG:
 	*create a new configuration by connecting once and passing a name to --save option
 	*Humanized error when configuration name doesn't exist
 	*ssh option -i recognition/handling
-
+	*config moved to ~/.s and ~/.sconfig, autocreates
 
 5/17/2012
 
@@ -32,7 +32,6 @@ CHANGELOG:
 
 TO-DO:
 
-	*move configs to ~/.s instead of ~/etc/s/
 	*make one-off keys 
 	*install keys on the remote
 	*clone config from remote with s installed

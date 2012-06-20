@@ -32,17 +32,33 @@
 #
 
 VERSION="0.9"
-CONFIGDIR="$HOME/etc/s/"
-KEYPATH="$HOME/.ssh/"    
-KEYFILE="id_rsa"
+CONFIGDIR="$HOME/.s/"
+CONFIGFILE="$HOME/.sconfig"    
 
+
+if [ ! -d $CONFIGDIR ]; then
+    mkdir $CONFIGDIR
+fi
+
+if [ ! -f $CONFIGFILE ]; then
+  #echo basic config into config file here
+  echo "#s configuration" > $CONFIGFILE
+  echo "#Basic ssh config" >> $CONFIGFILE
+  echo "KEYPATH=$HOME/.ssh/" >> $CONFIGFILE
+  echo "KEYFILE=id_rsa" >> $CONFIGFILE  
+fi
+
+if [ -f $CONFIGFILE ]; then
+  source $CONFIGFILE
+fi
 
 function do_connect() {
-    list=(`ls -A $CONFIGDIR | grep -v template | sort`)
+    list=(`ls -A $CONFIGDIR | sort`)
     for filename in "${list[@]}"
     do
       if [[ "$1" == $filename ]]; then
         source $CONFIGDIR$1
+        # rub out keypath for the moment. fix later.
         KEYPATH=""
         ssh -i $KEYPATH$KEYFILE $USER@$HOST
         exit 0
