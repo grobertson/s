@@ -1,12 +1,54 @@
 #!/bin/bash
-VERSION="0.2 alpha"
+
+###
+# Copyright (c) 2012, Grant Robertson
+# http://github.com/grobertson/
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met: 
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer. 
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution. 
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies, 
+# either expressed or implied, of the FreeBSD Project.
+#
+#
+
+VERSION="0.9"
 CONFIGDIR="$HOME/etc/s/"
 KEYPATH="$HOME/.ssh/"    
 KEYFILE="id_rsa"
 
+
 function do_connect() {
-    source $CONFIGDIR$1
-    ssh -i $KEYPATH$KEYFILE $USER@$HOST
+    list=(`ls -A $CONFIGDIR | grep -v template | sort`)
+    for filename in "${list[@]}"
+    do
+      if [[ "$1" == $filename ]]; then
+        source $CONFIGDIR$1
+        KEYPATH=""
+        ssh -i $KEYPATH$KEYFILE $USER@$HOST
+        exit 0
+      fi
+    done
+    echo "s: No configuration named $1. Perhaps you should --save one?"
 }
 
 function show_config {
@@ -14,34 +56,120 @@ function show_config {
     exit
 }
 
+function show_usage {
+    echo "usage: $0 [list|show|help] [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
+}
+
 function show_help {
-    echo "s Version $VERSION — An ssh supertool "
-    echo "———"    
-    echo "usage: s [option]"
-    echo " s show — Show available configurations"
-    echo " s <configuration name> — Load configuration and ssh to remote acct/system"
-    echo " s help — Display this message"
+    echo "usage: $0 [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
+    echo "———" >&2
+    echo "s Version $VERSION — An ssh supertool " >&2
+    echo    
+    echo "usage: s [option]" >&2
+    echo " s <configuration name> — Load configuration and ssh to remote acct/system" >&2
+    echo " s show — Show available configurations" >&2
+    echo " s help — Display this message" >&2
     exit
 }
 
-if [ ! $1 ]
-then 
-    show_help
-fi  
+function save_config {
+  if [[ "$OPT_SAVE" == "show" ]] ; then
+    echo "s: Configuration name can't be $OPT_SAVE, it's reserved. Sorry."
+    exit 1
+  fi
+  echo "s: Configuration will be saved as $OPT_SAVE"
+  echo "## Basics" > $CONFIGDIR$OPT_SAVE
+  echo "HOST=$OPT_HOST" >> $CONFIGDIR$OPT_SAVE 
+  echo "USER=$OPT_USER" >> $CONFIGDIR$OPT_SAVE                                     
+  if [[ "$OPT_KEYFILE" != "" ]] ; then
+    echo '##Keys' >> $CONFIGDIR$OPT_SAVE
+    echo "KEYFILE=$OPT_KEYFILE" >> $CONFIGDIR$OPT_SAVE
+    #Currently unused, use fullpath in KEYFILE for now
+    #echo '#KEYPATH=".ssh/"' >> $CONFIGDIR$OPT_SAVE
+  fi
+  exit 0
+}
 
-if [ $1 = "help" ]
-then 
-    show_help
+
+#Check to see if at least one argument was specified
+if [ $# -lt 1 ] ; then
+   echo "s: You must specify at least 1 argument."
+   show_usage
+   exit 1
+fi
+ 
+#Process arguments
+while getopts h-:i:n: opt
+do
+   case "$opt" in
+      h) show_help;;
+      i) OPT_KEYFILE=$OPTARG;;
+      \?) show_help;;
+      -)
+        case "${OPTARG}" in
+            save)
+                OPT_SAVE="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                ;;
+            save=*)
+                OPT_SAVE=${OPTARG#*=}
+                opt=${OPTARG%=$val}
+                ;;
+            *)
+                if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+                    echo "s: Unknown option --${OPTARG}" >&2
+                    exit 1
+                fi
+                ;;
+        esac;;
+   esac
+done
+
+# Remove the switches we parsed above.
+shift `expr $OPTIND - 1`
+
+# We want at least one non-option argument. 
+if [ $# -eq 0 ]; then
+    echo $USAGE >&2
+    echo
+    show_usage
+    exit 1
 fi
 
-if [ $1 = "show" ]
-then 
-    show_config
+case "$1" in
+   help) show_help;;
+   show) show_config;;
+   list) show_config;;
+esac 
+
+#now that all that's out of the way...
+
+# Is this arg a user/host combo? 
+if [[ "$1" == *@* ]]; then
+    OIFS=$IFS
+    IFS='@'
+    arr=($1)
+    OPT_USER=${arr[0]}
+    OPT_HOST=${arr[1]}
+    IFS=$OIFS
+    if [[ "$2" != "" ]]; then
+      OPT_SAVE=$2
+      save_config
+      exit 0
+    fi
+    # just do a connection here? remind user to save? 
+    # what should this behavior be? "save(y/n), name:?"
+    # right now, warn and die, assuming user will want to up arrow and add a name to the last command line
+    if [[ "$OPT_SAVE" != "" ]]; then
+      
+      save_config
+      exit 0
+    fi
+    echo "s: No configuration name given as argument to --save or as last comand line parameter."
+    exit 1
 fi
 
-if [ $1 = "list" ]
-then 
-    show_config
-fi
 
+
+
+# do_connect is safe to call, will error and die pretty if the congiguration doesn't exist.
 do_connect $1
