@@ -1,7 +1,7 @@
 s
 =
 
-s is the dead-simple command line ssh configuration management tool you've always wanted. Built to do one thing well—remember ssh connections and recall them as simple, single word configuration aliases. 
+s is the dead-simple command line ssh configuration management tool you've always wanted. Built to do one thing well—remember ssh connections and recall them as simple, single word configuration aliases. Written in bash and licensed as freeBSD so you can use it nearly everywhere.  
 
 	usage: s [configuration_name|--save configuration_name][-i identity_file] user@host.com
 	s show — Show available configurations
@@ -13,6 +13,7 @@ CHANGELOG:
 
 5/19/2012
 
+	*freeBSD license added
 	*create a new configuration by connecting once and passing a name to --save option
 	*Humanized error when configuration name doesn't exist
 	*ssh option -i recognition/handling
