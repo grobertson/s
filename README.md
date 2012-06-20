@@ -5,17 +5,24 @@ s is the dead-simple command line ssh configuration management tool you've alway
 
 Installing s:
 
+One-line auto-install latest version from github:
+
+	wget https://raw.github.com/grobertson/s/master/bin/s -O /tmp/s && cd /tmp && chmod 700 /tmp/s && ./s --install system && rm -f /tmp/s
+	
 From this directory:
 
 To install s for just the current user:
+
 	./s --install home
 
 To install s for everyone (requires root, or at least write permissions on /usr/local/bin):
+
 	./s --install system   
 
 Removing s:
 
 To remove s from all likely install locations:
+	
 	./s --remove force	
 
 Usage:
