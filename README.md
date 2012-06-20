@@ -31,7 +31,14 @@ CHANGELOG:
 	*include a template for basic configurations
 
 TO-DO:
-	*more complete coverage of ssh options
+
+	*move configs to ~/.s instead of ~/etc/s/
+	*make one-off keys 
+	*install keys on the remote
+	*clone config from remote with s installed
+	*more complete coverage of ssh options (port forwarding first!)
+	*list/delete/replace keys in ~/.ssh/
+	*list/delete/replace keys on the remote
 	*Needs a "delete" command
 
 	
