@@ -13,24 +13,25 @@ CHANGELOG:
 
 5/19/2012
 
-*create a new configuration by connecting once and passing a name to --save option
-*Humanized error when configuration name doesn't exist
+	*create a new configuration by connecting once and passing a name to --save option
+	*Humanized error when configuration name doesn't exist
+	*ssh option -i recognition/handling
 
 
 5/17/2012
 
-*"show" and "list" are now interchangeable
-*Hide the "template" configuration from the show/list function
+	*"show" and "list" are now interchangeable
+	*Hide the "template" configuration from the show/list function
 
 
 4/22/2012
 
-*show, help and connect functions
-*include a template for basic configurations
+	*show, help and connect functions
+	*include a template for basic configurations
 
 TO-DO:
-*more complete coverage of ssh options
-*Need a "delete" command
+	*more complete coverage of ssh options
+	*Needs a "delete" command
 
 	
 
