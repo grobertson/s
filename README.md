@@ -35,6 +35,10 @@ Usage:
 
 CHANGELOG:
 
+5/21/2012
+
+	*Port forwarding options -L and -R are fully implemented (even multiple rules)
+
 5/20/2012
     
 	*Option to create/install/save a new 2048 bit keypair on a remote host 
@@ -67,7 +71,7 @@ CHANGELOG:
 TO-DO:
 
 	*clone config from remote with s installed
-	*more complete coverage of ssh options (port forwarding first!)
+	*more complete coverage of ssh options
 	*list/delete/replace keys in ~/.ssh/
 	*list/delete/replace keys on the remote
 	*Needs a "delete" command

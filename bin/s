@@ -31,7 +31,7 @@
 #
 #
 
-VERSION="0.9.1"
+VERSION="0.9.2 [port_forwarding]"
 CONFIGDIR="$HOME/.s/"
 CONFIGFILE="$HOME/.sconfig"    
 
@@ -129,7 +129,16 @@ function do_connect() {
         source $CONFIGDIR$1
         # rub out keypath for the moment. fix later.
         KEYPATH=""
-        ssh -i $KEYPATH$KEYFILE $USER@$HOST
+        for PORTFW in "${LISTEN[@]}"
+          do
+            L_OPTS="-L $PORTFW $L_OPTS"
+          done
+        for PORTFW in "${RLISTEN[@]}"
+          do
+            R_OPTS="-R $PORTFW $R_OPTS"
+          done        
+        #echo " $R_OPTS $L_OPTS -i $KEYPATH$KEYFILE $USER@$HOST "
+        ssh $R_OPTS $L_OPTS -i $KEYPATH$KEYFILE $USER@$HOST
         exit 0
       fi
     done
@@ -172,6 +181,16 @@ function save_config {
     #Currently unused, use fullpath in KEYFILE for now
     #echo '#KEYPATH=".ssh/"' >> $CONFIGDIR$OPT_SAVE
   fi
+  for PORTFW in "${OPT_LISTEN[@]}"
+  do
+    L=$(($L + 1))
+    echo "LISTEN[$L]=$PORTFW"   >> $CONFIGDIR$OPT_SAVE
+  done
+  for PORTFW in "${OPT_RLISTEN[@]}"
+  do
+    R=$(($R + 1))
+    echo "RLISTEN[$R]=$PORTFW"   >> $CONFIGDIR$OPT_SAVE
+  done
 }
 
 function make_key {
@@ -209,11 +228,17 @@ if [ $# -lt 1 ] ; then
 fi
  
 #Process arguments
-while getopts h-:i:n: opt
+while getopts h-:i:n:L:R: opt
 do
    case "$opt" in
       h) show_help;;
       i) OPT_KEYFILE=$OPTARG;;
+      L) 
+      OPT_LISTEN[$((${#OPT_LISTEN[@]} + 1))]=$OPTARG
+      ;;
+      R) 
+      OPT_RLISTEN[$((${#OPT_RLISTEN[@]} + 1))]=$OPTARG
+      ;;  
       \?) show_help;;
       -)
         case "${OPTARG}" in
@@ -278,6 +303,7 @@ case "$1" in
 esac 
 
 #now that all that's out of the way...
+
 
 # Is this arg a user/host combo? 
 if [[ "$1" == *@* ]]; then
