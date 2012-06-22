@@ -3,6 +3,8 @@ s
 
 s is the dead-simple command line ssh configuration management tool you've always wanted. Built to do one thing well—remember ssh connections and recall them as simple, single word configuration aliases. Written in bash and licensed as freeBSD so you can use it nearly everywhere.  
 
+https://github.com/grobertson/s/wiki
+
 Installing s:
 
 One-line auto-install latest version from github:
