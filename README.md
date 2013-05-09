@@ -9,23 +9,23 @@ Installing s:
 
 One-line auto-install latest version from github:
 
-	wget https://raw.github.com/grobertson/s/master/bin/s -O /tmp/s && cd /tmp && chmod 700 /tmp/s && ./s --install system && rm -f /tmp/s
+	wget -O- https://raw.github.com/grobertson/s/master/bin/s -O /tmp/s && cd /tmp && chmod 700 /tmp/s && ./s --install system && rm -f /tmp/s
+
+	cd /tmp && wget -O- https://github.com/grobertson/s/archive/master.tar.gz | tar xz && cd s-master && make install && cd -
 	
 From this directory:
 
 To install s for just the current user:
 
-	./s --install home
+	make install
 
 To install s for everyone (requires root, or at least write permissions on /usr/local/bin):
 
-	./s --install system   
+	PREFIX=/usr/local make install
 
 Removing s:
 
-To remove s from all likely install locations:
-	
-	./s --remove force	
+	PREFIX=... make uninstall
 
 Usage:
 
