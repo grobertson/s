@@ -285,7 +285,7 @@ if [[ "$1" == *@* ]]; then
     arr=($1)
     OPT_USER=${arr[0]}
     OPT_HOST=${arr[1]}
-    IFS=$OIFS
+    IFS=$OIFScd
     if [[ "$2" != "" ]]; then
       OPT_SAVE=$2
       if [[ $DO_ADDKEY == "yes" ]]; then
