@@ -35,9 +35,90 @@ VERSION="0.9.1"
 CONFIGDIR="$HOME/.s/"
 CONFIGFILE="$HOME/.sconfig"    
 
+if [ ! -d $CONFIGDIR ]; then
+    mkdir $CONFIGDIR
+fi
+
+if [ ! -f $CONFIGFILE ]; then
+  #echo basic config into config file here
+  echo "#s configuration" > $CONFIGFILE
+  echo "#Basic ssh config" >> $CONFIGFILE
+  echo "KEYPATH=$HOME/.ssh/" >> $CONFIGFILE
+  echo "KEYFILE=id_rsa" >> $CONFIGFILE  
+fi
+
 if [ -f $CONFIGFILE ]; then
   source $CONFIGFILE
 fi
+
+function remove {
+  if [ -f "/usr/local/bin/s" ]; then
+    sudo rm -f "/usr/local/bin/s"
+    echo "Removed s from /usr/local/bin/"
+  fi
+  if [ -f "/usr/bin/s" ]; then
+    sudo rm -f "/usr/bin/s"
+    echo "Removed s from /usr/bin/"
+  fi
+  if [ -f "/bin/s" ]; then
+    sudo rm -f "/bin/s"
+    echo "Removed s from /bin/"
+  fi
+  if [ -f $HOME/bin/s ]; then
+    sudo rm -f $HOME/bin/s
+    echo "Removed s from $HOME/bin/"
+  fi
+  exit 0  
+}
+
+function install {
+  if [[ "$OPT_INSTALL" != "" ]]; then  
+    case "$OPT_INSTALL" in
+        home) 
+          if [ ! -d $HOME/bin ]; then
+            mkdir $HOME/bin
+            chmod 700 $HOME/bin
+          fi
+          cp -f s $HOME/bin/s
+          chmod 700 $HOME/bin/s
+          echo "Installed s to ~/bin/ -- Make sure ~/bin is in your PATH"
+          exit 0
+          ;;
+        system) 
+          if [ -d "/usr/local/bin" ]; then
+            sudo cp -f s "/usr/local/bin/s"
+            sudo chown root "/usr/local/bin/s"
+            sudo chmod 755 "/usr/local/bin/s"
+            echo "Installed s to /usr/local/bin/"
+            exit 0
+          fi
+          if [ -d "/usr/bin" ]; then
+            sudo cp -f s "/usr/bin/s"
+            sudo chown root "/usr/bin/s"
+            sudo chmod 755 "/usr/bin/s"
+            echo "Installed s to /usr/bin/ (/usr/local/bin doesn't exist!)"
+            exit 0
+          fi
+          if [ -d "/bin" ]; then
+            sudo cp -f s "/bin/s"
+            sudo chown root "/bin/s"
+            sudo chmod 755 "/bin/s"
+            echo "Installed s to /usr/bin/ (/usr/local/bin and /usr/bin/ don't exist!)"
+            exit 0
+          fi
+          echo "Couldn't find a suitable bin directory on this system. Maybe try 's --install home'?"
+          exit 1
+          ;;
+        *) 
+          echo "Install must be either 'home' or 'system'."
+          exit 1;;
+    esac
+  fi
+  echo "Install where?"
+  echo " Install for this user only:  's --install home'"               
+  echo " Install for all users (requires root):  's --install system'"
+  exit 1
+}
 
 function do_connect() {
     list=(`ls -A $CONFIGDIR | sort`)

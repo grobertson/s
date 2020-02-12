@@ -15,15 +15,15 @@ From this directory:
 
 To install s for just the current user:
 
-	make install
+ ./s --install home   
 
 To install s for everyone (requires root, or at least write permissions on /usr/local/bin):
 
-	PREFIX=/usr/local make install
+ ./s --install system   
 
 Removing s:
 
-	PREFIX=... make uninstall
+./s --remove force
 
 Usage:
 
