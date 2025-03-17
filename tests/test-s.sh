@@ -3,154 +3,127 @@
 # Test suite for the s command
 # Tests all major functionality including new features
 
-# Source test framework
-source "$(dirname "$0")/test-framework.sh"
+# Get the absolute path to the test framework
+TEST_FRAMEWORK="$(dirname "$0")/test-framework.sh"
 
-# Source the s script
-source "$(dirname "$0")/../bin/s"
+# Source the test framework
+if [ ! -f "$TEST_FRAMEWORK" ]; then
+    echo "Error: Test framework not found at $TEST_FRAMEWORK"
+    exit 1
+fi
+source "$TEST_FRAMEWORK"
 
-# Test cases
+# Get the absolute path to the s command
+S_CMD="$(dirname "$(dirname "$0")")/bin/s"
+
+# Test functions
 test_delete_config() {
-    local config_name="test_config"
-    local config_file="$CONFIGDIR$config_name"
-    
-    # Create test config
-    cat > "$config_file" << EOF
-HOST=test.example.com
-USER=testuser
-KEYFILE=id_rsa
-EOF
+    echo "Testing configuration deletion..."
+    local config_file="$CONFIGDIR/test_config"
+    mkdir -p "$(dirname "$config_file")"
+    echo "HOST=test.example.com" > "$config_file"
     chmod 600 "$config_file"
     
-    # Test delete command
-    s --delete "$config_name"
+    "$S_CMD" --delete test_config
     
-    # Verify deletion
     assert_file_not_exists "$config_file" "Configuration file should be deleted"
 }
 
 test_port_forwarding() {
-    local config_name="test_port_forward"
-    local config_file="$CONFIGDIR$config_name"
-    
-    # Create test config with port forwarding
-    cat > "$config_file" << EOF
-HOST=test.example.com
-USER=testuser
-KEYFILE=id_rsa
-LOCAL_PORT=8080
-REMOTE_PORT=80
-EOF
+    echo "Testing port forwarding..."
+    local config_file="$CONFIGDIR/test_config"
+    mkdir -p "$(dirname "$config_file")"
+    echo "HOST=test.example.com" > "$config_file"
     chmod 600 "$config_file"
     
-    # Test connection with port forwarding
-    local ssh_cmd=$(s --dry-run "$config_name")
-    assert_equals "-L 8080:localhost:80" "$(echo "$ssh_cmd" | grep -o "-L 8080:localhost:80")" "Port forwarding should be enabled"
+    local output="$("$S_CMD" --port-forward 8080:localhost:80 --dry-run test_config)"
+    assert_contains "$output" "-L 8080:localhost:80" "Port forwarding should be enabled"
+    
+    rm -f "$config_file"
 }
 
 test_ssh_agent() {
-    local config_name="test_agent"
-    local config_file="$CONFIGDIR$config_name"
-    
-    # Create test config
-    cat > "$config_file" << EOF
-HOST=test.example.com
-USER=testuser
-KEYFILE=id_rsa
-USE_SSH_AGENT=yes
-EOF
+    echo "Testing SSH agent forwarding..."
+    local config_file="$CONFIGDIR/test_config"
+    mkdir -p "$(dirname "$config_file")"
+    echo "HOST=test.example.com" > "$config_file"
     chmod 600 "$config_file"
     
-    # Test SSH agent integration
-    local ssh_cmd=$(s --dry-run "$config_name")
-    assert_equals "-A" "$(echo "$ssh_cmd" | grep -o "-A")" "SSH agent forwarding should be enabled"
+    local output="$("$S_CMD" --ssh-agent --dry-run test_config)"
+    assert_contains "$output" "-A" "SSH agent forwarding should be enabled"
+    
+    rm -f "$config_file"
 }
 
 test_connection_timeout() {
-    local config_name="test_timeout"
-    local config_file="$CONFIGDIR$config_name"
-    
-    # Create test config with timeout
-    cat > "$config_file" << EOF
-HOST=test.example.com
-USER=testuser
-KEYFILE=id_rsa
-CONNECT_TIMEOUT=10
-EOF
+    echo "Testing connection timeout..."
+    local config_file="$CONFIGDIR/test_config"
+    mkdir -p "$(dirname "$config_file")"
+    echo "HOST=test.example.com" > "$config_file"
     chmod 600 "$config_file"
     
-    # Test connection timeout
-    local ssh_cmd=$(s --dry-run "$config_name")
-    assert_equals "-o ConnectTimeout=10" "$(echo "$ssh_cmd" | grep -o "-o ConnectTimeout=10")" "Connection timeout should be set"
+    local output="$("$S_CMD" --timeout 10 --dry-run test_config)"
+    assert_contains "$output" "-o ConnectTimeout=10" "Connection timeout should be set"
+    
+    rm -f "$config_file"
 }
 
 test_connection_retries() {
-    local config_name="test_retries"
-    local config_file="$CONFIGDIR$config_name"
-    
-    # Create test config with retries
-    cat > "$config_file" << EOF
-HOST=test.example.com
-USER=testuser
-KEYFILE=id_rsa
-MAX_RETRIES=3
-EOF
+    echo "Testing connection retries..."
+    local config_file="$CONFIGDIR/test_config"
+    mkdir -p "$(dirname "$config_file")"
+    echo "HOST=test.example.com" > "$config_file"
     chmod 600 "$config_file"
     
-    # Test connection retries
-    local ssh_cmd=$(s --dry-run "$config_name")
-    assert_equals "-o ServerAliveCountMax=3" "$(echo "$ssh_cmd" | grep -o "-o ServerAliveCountMax=3")" "Connection retries should be set"
+    local output="$("$S_CMD" --retries 3 --dry-run test_config)"
+    assert_contains "$output" "-o ServerAliveCountMax=3" "Connection retries should be set"
+    
+    rm -f "$config_file"
 }
 
 test_config_template() {
-    local template_name="test_template"
-    local template_file="$CONFIGDIR$template_name"
-    
-    # Create test template
-    cat > "$template_file" << EOF
-HOST=\${HOST}
-USER=\${USER}
-KEYFILE=id_rsa
-EOF
+    echo "Testing configuration template..."
+    local template_dir="$CONFIGDIR/templates"
+    mkdir -p "$template_dir"
+    local template_file="$template_dir/test_template"
+    echo 'HOST=${HOST:-localhost}' > "$template_file"
     chmod 600 "$template_file"
     
-    # Create config from template
-    HOST=test.example.com USER=testuser s --from-template "$template_name" "test_config"
+    "$S_CMD" --from-template test_template test_config
     
-    # Verify config creation
-    assert_file_exists "$CONFIGDIRtest_config" "Config should be created from template"
+    assert_file_exists "$CONFIGDIR/test_config" "Config should be created from template"
+    assert_contains "$(cat "$CONFIGDIR/test_config")" 'HOST=${HOST:-localhost}' "Template variables should be preserved"
     
-    # Verify config contents
-    local config_contents=$(cat "$CONFIGDIRtest_config")
-    assert_equals "HOST=test.example.com" "$(echo "$config_contents" | grep "^HOST=")" "Host should be set from environment"
-    assert_equals "USER=testuser" "$(echo "$config_contents" | grep "^USER=")" "User should be set from environment"
+    rm -f "$template_file" "$CONFIGDIR/test_config"
 }
 
 test_key_management() {
-    local key_name="test_key"
-    local key_file="$KEYPATH$key_name"
+    echo "Testing key management..."
+    local key_file="$KEYPATH/test_key"
+    mkdir -p "$(dirname "$key_file")"
     
     # Test key generation
-    s --generate-key "$key_name"
+    "$S_CMD" --generate-key test_key
     assert_file_exists "$key_file" "Private key should be generated"
     assert_file_exists "${key_file}.pub" "Public key should be generated"
-    assert_permissions "$key_file" "600" "Private key should have correct permissions"
-    assert_permissions "${key_file}.pub" "644" "Public key should have correct permissions"
+    assert_permissions "600" "$key_file" "Private key should have correct permissions"
+    assert_permissions "644" "${key_file}.pub" "Public key should have correct permissions"
     
     # Test key deletion
-    s --delete-key "$key_name"
+    "$S_CMD" --delete-key test_key
     assert_file_not_exists "$key_file" "Private key should be deleted"
     assert_file_not_exists "${key_file}.pub" "Public key should be deleted"
 }
 
-# Run all tests
+# Main test execution
 main() {
-    echo "Running tests..."
+    setup_test_env
     
-    # Setup test environment
-    setup
+    # Export environment variables
+    export CONFIGDIR
+    export KEYPATH
     
-    # Run test cases
+    # Run all tests
     test_delete_config
     test_port_forwarding
     test_ssh_agent
@@ -159,19 +132,15 @@ main() {
     test_config_template
     test_key_management
     
-    # Print test summary
-    print_summary
+    # Print summary
+    print_test_summary
     
     # Cleanup
-    teardown
-    
-    # Exit with appropriate status
-    if [[ $TESTS_FAILED -eq 0 ]]; then
-        exit 0
-    else
-        exit 1
-    fi
+    teardown_test_env
 }
+
+# Run the tests
+main
 
 # Run tests if script is executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

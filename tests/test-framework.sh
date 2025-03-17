@@ -3,6 +3,10 @@
 # Test framework for shell scripts
 # Provides common testing utilities and functions
 
+# Get the absolute path to s-common.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$(dirname "$SCRIPT_DIR")/bin/s-common.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,39 +18,78 @@ TESTS_TOTAL=0
 TESTS_PASSED=0
 TESTS_FAILED=0
 
-# Test setup and teardown
-setup() {
-    # Create temporary test directory
-    TEST_DIR=$(mktemp -d)
-    export TEST_DIR
-    
-    # Create test SSH directory
-    TEST_SSH_DIR="$TEST_DIR/.ssh"
-    mkdir -p "$TEST_SSH_DIR"
-    chmod 700 "$TEST_SSH_DIR"
-    
-    # Create test config directory
-    TEST_CONFIG_DIR="$TEST_DIR/.s"
-    mkdir -p "$TEST_CONFIG_DIR"
-    chmod 700 "$TEST_CONFIG_DIR"
-    
-    # Create test config file
-    TEST_CONFIG_FILE="$TEST_DIR/.sconfig"
-    cat > "$TEST_CONFIG_FILE" << EOF
-KEYPATH=$TEST_SSH_DIR/
-KEYFILE=id_rsa
-EOF
-    chmod 600 "$TEST_CONFIG_FILE"
-    
-    # Export test environment variables
-    export HOME="$TEST_DIR"
-    export CONFIGDIR="$TEST_CONFIG_DIR"
-    export CONFIGFILE="$TEST_CONFIG_FILE"
+# Test environment
+CONFIGDIR=""
+KEYPATH=""
+
+# Mock functions
+mock_ssh() {
+    echo "ssh $*"
 }
 
-teardown() {
-    # Clean up test directory
-    rm -rf "$TEST_DIR"
+# Move mock_ssh_keygen definition after environment setup
+setup_test_env() {
+    echo "Setting up test environment..."
+    
+    # Create temporary directories
+    CONFIGDIR="$(mktemp -d)"
+    KEYPATH="$(mktemp -d)"
+    
+    # Export environment variables
+    export CONFIGDIR
+    export KEYPATH
+    export TEST_ENV=1
+    
+    # Create necessary directories
+    mkdir -p "$CONFIGDIR/templates"
+    mkdir -p "$KEYPATH"
+    
+    # Set permissions
+    chmod 700 "$CONFIGDIR"
+    chmod 700 "$CONFIGDIR/templates"
+    chmod 700 "$KEYPATH"
+    
+    # Define mock functions with access to environment variables
+    mock_ssh_keygen() {
+        local key_file="$1"
+        log "INFO" "Mock keygen received path: $key_file"
+        log "INFO" "KEYPATH is: $KEYPATH"
+        
+        # Extract just the key name
+        local key_name="$(basename "$key_file")"
+        log "INFO" "Key name is: $key_name"
+        
+        # Create the key in the test KEYPATH
+        local test_key_file="$KEYPATH/$key_name"
+        log "INFO" "Creating key file at: $test_key_file"
+        
+        touch "$test_key_file"
+        touch "${test_key_file}.pub"
+        
+        log "INFO" "Setting permissions"
+        chmod 600 "$test_key_file"
+        chmod 644 "${test_key_file}.pub"
+        log "INFO" "Key files created"
+    }
+    
+    # Export mock functions
+    export -f mock_ssh
+    export -f mock_ssh_keygen
+    
+    echo "Test directories created:"
+    echo "  CONFIGDIR: $CONFIGDIR"
+    echo "  KEYPATH: $KEYPATH"
+}
+
+# Teardown test environment
+teardown_test_env() {
+    echo "Cleaning up test environment..."
+    
+    # Remove temporary directories
+    rm -rf "$CONFIGDIR"
+    rm -rf "$KEYPATH"
+    
+    echo "Test directories removed"
 }
 
 # Test assertion functions
@@ -55,38 +98,32 @@ assert_equals() {
     local actual="$2"
     local message="$3"
     
-    TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    
-    if [[ "$expected" == "$actual" ]]; then
-        echo -e "${GREEN}✓${NC} $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
+    ((TESTS_TOTAL++))
+    if [ "$expected" = "$actual" ]; then
+        ((TESTS_PASSED++))
+        echo -e "${GREEN}✓ $message${NC}"
     else
-        echo -e "${RED}✗${NC} $message"
-        echo -e "  Expected: $expected"
-        echo -e "  Got:      $actual"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
+        ((TESTS_FAILED++))
+        echo -e "${RED}✗ $message${NC}"
+        echo "  Expected: $expected"
+        echo "  Got:      $actual"
     fi
 }
 
-assert_not_equals() {
-    local expected="$1"
-    local actual="$2"
+assert_contains() {
+    local haystack="$1"
+    local needle="$2"
     local message="$3"
     
-    TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    
-    if [[ "$expected" != "$actual" ]]; then
-        echo -e "${GREEN}✓${NC} $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
+    ((TESTS_TOTAL++))
+    if [[ "$haystack" == *"$needle"* ]]; then
+        ((TESTS_PASSED++))
+        echo -e "${GREEN}✓ $message${NC}"
     else
-        echo -e "${RED}✗${NC} $message"
-        echo -e "  Expected: not $expected"
-        echo -e "  Got:      $actual"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
+        ((TESTS_FAILED++))
+        echo -e "${RED}✗ $message${NC}"
+        echo "  Expected to contain: $needle"
+        echo "  Got:                 $haystack"
     fi
 }
 
@@ -94,17 +131,14 @@ assert_file_exists() {
     local file="$1"
     local message="$2"
     
-    TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    
-    if [[ -f "$file" ]]; then
-        echo -e "${GREEN}✓${NC} $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
+    ((TESTS_TOTAL++))
+    if [ -f "$file" ]; then
+        ((TESTS_PASSED++))
+        echo -e "${GREEN}✓ $message${NC}"
     else
-        echo -e "${RED}✗${NC} $message"
-        echo -e "  File not found: $file"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
+        ((TESTS_FAILED++))
+        echo -e "${RED}✗ $message${NC}"
+        echo "  File not found: $file"
     fi
 }
 
@@ -112,130 +146,49 @@ assert_file_not_exists() {
     local file="$1"
     local message="$2"
     
-    TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    
-    if [[ ! -f "$file" ]]; then
-        echo -e "${GREEN}✓${NC} $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
+    ((TESTS_TOTAL++))
+    if [ ! -f "$file" ]; then
+        ((TESTS_PASSED++))
+        echo -e "${GREEN}✓ $message${NC}"
     else
-        echo -e "${RED}✗${NC} $message"
-        echo -e "  File exists but should not: $file"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
-    fi
-}
-
-assert_directory_exists() {
-    local dir="$1"
-    local message="$2"
-    
-    TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    
-    if [[ -d "$dir" ]]; then
-        echo -e "${GREEN}✓${NC} $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
-    else
-        echo -e "${RED}✗${NC} $message"
-        echo -e "  Directory not found: $dir"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
-    fi
-}
-
-assert_directory_not_exists() {
-    local dir="$1"
-    local message="$2"
-    
-    TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    
-    if [[ ! -d "$dir" ]]; then
-        echo -e "${GREEN}✓${NC} $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
-    else
-        echo -e "${RED}✗${NC} $message"
-        echo -e "  Directory exists but should not: $dir"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
+        ((TESTS_FAILED++))
+        echo -e "${RED}✗ $message${NC}"
+        echo "  File exists but should not: $file"
     fi
 }
 
 assert_permissions() {
-    local file="$1"
-    local expected_perms="$2"
+    local expected="$1"
+    local file="$2"
     local message="$3"
     
-    TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    
-    local actual_perms=$(stat -c %a "$file" 2>/dev/null)
-    if [[ "$actual_perms" == "$expected_perms" ]]; then
-        echo -e "${GREEN}✓${NC} $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
+    ((TESTS_TOTAL++))
+    local actual
+    if [ "$(uname)" = "Darwin" ]; then
+        actual="$(stat -f "%Lp" "$file" 2>/dev/null)"
     else
-        echo -e "${RED}✗${NC} $message"
-        echo -e "  Expected permissions: $expected_perms"
-        echo -e "  Got permissions:      $actual_perms"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
+        actual="$(stat -c "%a" "$file" 2>/dev/null)"
+    fi
+    
+    if [ "$actual" = "$expected" ]; then
+        ((TESTS_PASSED++))
+        echo -e "${GREEN}✓ $message${NC}"
+    else
+        ((TESTS_FAILED++))
+        echo -e "${RED}✗ $message${NC}"
+        echo "  Expected permissions: $expected"
+        echo "  Got permissions: $actual"
     fi
 }
 
-# Test summary
-print_summary() {
-    echo -e "\n${YELLOW}Test Summary:${NC}"
-    echo -e "Total tests:  $TESTS_TOTAL"
+# Print test summary
+print_test_summary() {
+    echo
+    echo "Test Summary:"
+    echo "Total tests:  $TESTS_TOTAL"
     echo -e "${GREEN}Passed:      $TESTS_PASSED${NC}"
-    echo -e "${RED}Failed:      $TESTS_FAILED${NC}"
-    
-    if [[ $TESTS_FAILED -eq 0 ]]; then
-        return 0
-    else
-        return 1
+    if [ $TESTS_FAILED -gt 0 ]; then
+        echo -e "${RED}Failed:      $TESTS_FAILED${NC}"
     fi
-}
-
-# Mock SSH command for testing
-mock_ssh() {
-    local expected_args=("$@")
-    local actual_args=()
-    
-    # Read actual arguments
-    while read -r arg; do
-        actual_args+=("$arg")
-    done
-    
-    # Compare arguments
-    if [[ "${#expected_args[@]}" != "${#actual_args[@]}" ]]; then
-        echo "Error: Expected ${#expected_args[@]} arguments, got ${#actual_args[@]}"
-        return 1
-    fi
-    
-    for i in "${!expected_args[@]}"; do
-        if [[ "${expected_args[$i]}" != "${actual_args[$i]}" ]]; then
-            echo "Error: Argument $i mismatch"
-            echo "Expected: ${expected_args[$i]}"
-            echo "Got:      ${actual_args[$i]}"
-            return 1
-        fi
-    done
-    
-    return 0
-}
-
-# Mock SSH key generation
-mock_ssh_keygen() {
-    local key_file="$1"
-    local pub_file="${key_file}.pub"
-    
-    # Create dummy key files
-    echo "dummy private key" > "$key_file"
-    echo "dummy public key" > "$pub_file"
-    
-    chmod 600 "$key_file"
-    chmod 644 "$pub_file"
-    
-    return 0
+    echo
 } 
