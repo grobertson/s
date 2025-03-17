@@ -131,6 +131,29 @@ validate_ssh_connection() {
 }
 
 # File operations
+safe_cp() {
+    local src="$1"
+    local dst="$2"
+    local perms="$3"
+    
+    if [ ! -f "$src" ]; then
+        log "ERROR" "Source file not found: $src"
+        return $EXIT_ERROR
+    fi
+    
+    if ! cp -f "$src" "$dst"; then
+        log "ERROR" "Failed to copy file from $src to $dst"
+        return $EXIT_ERROR
+    fi
+    
+    if ! chmod "$perms" "$dst"; then
+        log "ERROR" "Failed to set permissions on $dst"
+        return $EXIT_ERROR
+    fi
+    
+    return $EXIT_SUCCESS
+}
+
 secure_file_operation() {
     local operation="$1"
     local file="$2"
