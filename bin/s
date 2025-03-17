@@ -36,7 +36,30 @@ if ! command -v safe_mkdir >/dev/null 2>&1; then
     source "$SCRIPT_DIR/s-common.sh"
 fi
 
-VERSION="0.9.3"
+# ANSI color support
+if [ -t 1 ]; then
+    # Colors for output
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    MAGENTA='\033[0;35m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    DIM='\033[2m'
+    NC='\033[0m' # No Color
+else
+    # No colors if not a terminal
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    MAGENTA=''
+    CYAN=''
+    BOLD=''
+    DIM=''
+    NC=''
+fi
 
 # Use environment variables if set, otherwise use defaults
 CONFIGDIR="${CONFIGDIR:-$HOME/.s}"
@@ -46,6 +69,7 @@ KEYPATH="${KEYPATH:-$HOME/.ssh}"
 # Initialize configuration directory and file
 if ! safe_mkdir "$CONFIGDIR" "700"; then
     log "ERROR" "Failed to initialize configuration directory"
+    echo -e "${RED}Failed to initialize configuration directory:${NC} $CONFIGDIR"
     exit $EXIT_ERROR
 fi
 
@@ -57,6 +81,7 @@ KEYPATH=$KEYPATH
 KEYFILE=id_rsa
 EOF
     chmod 600 "$CONFIGFILE"
+    echo -e "${GREEN}Created default configuration file:${NC} $CONFIGFILE"
 fi
 
 if [[ -f "$CONFIGFILE" ]]; then
@@ -84,48 +109,132 @@ function remove() {
     local removed=0
     for path in "${bin_paths[@]}"; do
         if [[ -f "$path" ]]; then
-            if sudo -n rm -f "$path" 2>/dev/null; then
+            if [[ "$path" == "$HOME/bin/s" ]]; then
+                # User-specific installation
+                rm -f "$path"
                 log "INFO" "Removed s from $path"
+                echo -e "${GREEN}Removed s from:${NC} $path"
                 removed=1
             else
-                log "WARNING" "Failed to remove s from $path"
+                # System-wide installation
+                if sudo -n rm -f "$path" 2>/dev/null; then
+                    log "INFO" "Removed s from $path"
+                    echo -e "${GREEN}Removed s from:${NC} $path"
+                    removed=1
+                else
+                    log "WARNING" "Failed to remove s from $path"
+                    echo -e "${YELLOW}Failed to remove s from:${NC} $path"
+                    echo -e "Try running: ${GREEN}sudo rm $path${NC}"
+                fi
             fi
         fi
     done
     
     if [[ $removed -eq 0 ]]; then
         log "ERROR" "Failed to remove s from any location"
+        echo -e "${RED}No installation of s found in standard locations:${NC}"
+        for path in "${bin_paths[@]}"; do
+            echo -e "  ${GREEN}$path${NC}"
+        done
         exit $EXIT_ERROR
     fi
     
+    # Clean up configuration files if requested
+    if [[ "$OPT_REMOVE" == "force" ]]; then
+        if [ -d "$CONFIGDIR" ]; then
+            rm -rf "$CONFIGDIR"
+            log "INFO" "Removed configuration directory"
+            echo -e "${GREEN}Removed configuration directory:${NC} $CONFIGDIR"
+        fi
+        if [ -f "$CONFIGFILE" ]; then
+            rm -f "$CONFIGFILE"
+            log "INFO" "Removed configuration file"
+            echo -e "${GREEN}Removed configuration file:${NC} $CONFIGFILE"
+        fi
+    fi
+    
+    log "INFO" "Successfully uninstalled s"
+    echo -e "${GREEN}Successfully uninstalled s${NC}"
     exit $EXIT_SUCCESS
 }
 
 function install() {
     if [[ -z "$OPT_INSTALL" ]]; then
         log "ERROR" "Install location not specified"
-        echo "Install where?"
-        echo " Install for this user only:  's --install home'"               
-        echo " Install for all users (requires root):  's --install system'"
+        echo -e "${RED}Install location not specified${NC}"
+        echo -e "Please specify where to install s:"
+        echo -e "  For this user only:    ${GREEN}s --install home${NC}"
+        echo -e "  For all users:         ${GREEN}s --install system${NC} (requires root)"
         exit $EXIT_ERROR
     fi
     
+    # Verify required dependencies
+    if ! command -v ssh-keygen >/dev/null 2>&1; then
+        log "ERROR" "Required dependency 'ssh-keygen' not found"
+        echo -e "${RED}Required dependency 'ssh-keygen' not found${NC}"
+        echo -e "Please install OpenSSH first:"
+        echo -e "  On Ubuntu/Debian: ${GREEN}sudo apt-get install openssh-client${NC}"
+        echo -e "  On macOS: OpenSSH is usually pre-installed"
+        echo -e "  On Windows: Install OpenSSH from Windows Features"
+        exit $EXIT_ERROR
+    fi
+    
+    # Get absolute path to script
+    local script_path
+    script_path="$(readlink -f "$SCRIPT_DIR/s")"
+    
     case "$OPT_INSTALL" in
         home) 
+            # Verify ~/bin is writable
+            if [ ! -w "$HOME" ]; then
+                log "ERROR" "Cannot write to home directory"
+                echo -e "${RED}Cannot write to home directory${NC}"
+                echo -e "Please check your home directory permissions:"
+                echo -e "  Current user: ${GREEN}$USER${NC}"
+                echo -e "  Home directory: ${GREEN}$HOME${NC}"
+                echo -e "  Permissions: ${GREEN}$(ls -ld "$HOME")${NC}"
+                exit $EXIT_ERROR
+            fi
+            
             if ! safe_mkdir "$HOME/bin" "700"; then
                 log "ERROR" "Failed to create ~/bin directory"
+                echo -e "${RED}Failed to create ~/bin directory${NC}"
+                echo -e "Please check if you have permission to create directories in your home folder"
                 exit $EXIT_ERROR
             fi
             
-            if ! safe_cp "$SCRIPT_DIR/s" "$HOME/bin/s" "700"; then
+            if ! safe_cp "$script_path" "$HOME/bin/s" "700"; then
                 log "ERROR" "Failed to install s to ~/bin/"
+                echo -e "${RED}Failed to install s to ~/bin/${NC}"
+                echo -e "Please check if you have permission to write to ~/bin/"
                 exit $EXIT_ERROR
             fi
             
-            log "INFO" "Installed s to ~/bin/ -- Make sure ~/bin is in your PATH"
+            # Verify installation
+            if [ ! -x "$HOME/bin/s" ]; then
+                log "ERROR" "Installation verification failed"
+                echo -e "${RED}Installation verification failed${NC}"
+                echo -e "The installed script is not executable. Please check permissions."
+                exit $EXIT_ERROR
+            fi
+            
+            log "INFO" "Successfully installed s to ~/bin/"
+            echo -e "${GREEN}Successfully installed s to ~/bin/${NC}"
+            echo -e "To use s, make sure ~/bin is in your PATH:"
+            echo -e "  Add this line to your ~/.bashrc or ~/.zshrc:"
+            echo -e "    ${GREEN}export PATH=\"\$HOME/bin:\$PATH\"${NC}"
             exit $EXIT_SUCCESS
             ;;
         system) 
+            # Verify sudo access
+            if ! sudo -n true 2>/dev/null; then
+                log "ERROR" "No sudo access available"
+                echo -e "${RED}No sudo access available${NC}"
+                echo -e "Please run the installation with sudo:"
+                echo -e "  ${GREEN}sudo make install${NC}"
+                exit $EXIT_ERROR
+            fi
+            
             local bin_paths=(
                 "/usr/local/bin"
                 "/usr/bin"
@@ -134,20 +243,39 @@ function install() {
             
             for path in "${bin_paths[@]}"; do
                 if [[ -d "$path" ]]; then
-                    if sudo -n cp -f "$SCRIPT_DIR/s" "$path/s" && \
-                       sudo -n chown root "$path/s" && \
+                    # Verify directory is writable
+                    if ! sudo -n test -w "$path"; then
+                        continue
+                    fi
+                    
+                    if sudo -n cp -f "$script_path" "$path/s" && \
+                       sudo -n chown root:root "$path/s" && \
                        sudo -n chmod 755 "$path/s"; then
-                        log "INFO" "Installed s to $path/"
+                        # Verify installation
+                        if [ ! -x "$path/s" ]; then
+                            log "ERROR" "Installation verification failed"
+                            continue
+                        fi
+                        log "INFO" "Successfully installed s to $path/"
+                        echo -e "${GREEN}Successfully installed s to $path/${NC}"
+                        echo -e "${GREEN}s is now available system-wide${NC}"
                         exit $EXIT_SUCCESS
                     fi
                 fi
             done
             
-            log "ERROR" "Couldn't find a suitable bin directory on this system. Maybe try 's --install home'?"
+            log "ERROR" "Couldn't find a suitable bin directory"
+            echo -e "${RED}Couldn't find a suitable bin directory${NC}"
+            echo -e "No writable system bin directory found. Try installing for your user only:"
+            echo -e "  ${GREEN}make install-home${NC}"
             exit $EXIT_ERROR
             ;;
         *) 
-            log "ERROR" "Install must be either 'home' or 'system'"
+            log "ERROR" "Invalid installation type"
+            echo -e "${RED}Invalid installation type${NC}"
+            echo -e "Installation type must be either 'home' or 'system'"
+            echo -e "  For this user only:    ${GREEN}s --install home${NC}"
+            echo -e "  For all users:         ${GREEN}s --install system${NC} (requires root)"
             exit $EXIT_INVALID_INPUT
             ;;
     esac
@@ -160,18 +288,34 @@ function delete_config() {
     # Validate input
     if [ -z "$name" ]; then
         log "ERROR" "Configuration name is required"
+        echo -e "${RED}Configuration name is required${NC}"
+        echo -e "Please specify which configuration to delete:"
+        echo -e "  ${GREEN}s --delete <name>${NC}"
         return 1
     fi
     
     # Check if config exists
     if [ ! -f "$config_file" ]; then
         log "ERROR" "Configuration '$name' does not exist"
+        echo -e "${RED}Configuration '$name' does not exist${NC}"
+        echo -e "Configuration not found: ${GREEN}$config_file${NC}"
+        echo -e "Available configurations:"
+        ls -1 "$CONFIGDIR/" 2>/dev/null | grep -v '^templates$' | sed "s/^/  ${GREEN}/" | sed "s/$/${NC}/" || echo -e "  ${YELLOW}No configurations found${NC}"
         return 1
     fi
     
     # Delete config
-    rm -f "$config_file"
-    log "INFO" "Configuration '$name' deleted"
+    if ! rm -f "$config_file"; then
+        log "ERROR" "Failed to delete configuration"
+        echo -e "${RED}Failed to delete configuration${NC}"
+        echo -e "Cannot delete configuration file. Please check permissions:"
+        echo -e "  ${GREEN}$config_file${NC}"
+        return 1
+    fi
+    
+    log "INFO" "Successfully deleted configuration '$name'"
+    echo -e "${GREEN}Configuration deleted:${NC} $config_file"
+    return 0
 }
 
 function delete_key() {
@@ -181,18 +325,34 @@ function delete_key() {
     # Validate input
     if [ -z "$name" ]; then
         log "ERROR" "Key name is required"
+        echo -e "${RED}Please specify which key to delete:${NC}"
+        echo -e "  ${GREEN}s --delete-key <name>${NC}"
         return 1
     fi
     
     # Check if key exists
     if [ ! -f "$key_file" ]; then
         log "ERROR" "Key '$name' does not exist"
+        echo -e "${RED}No key found at:${NC} $key_file"
+        echo -e "Available keys in ${GREEN}$KEYPATH${NC}:"
+        ls -1 "$KEYPATH"/*.pub 2>/dev/null | sed 's/\.pub$//' | sed 's/.*\///' | sed "s/^/  ${GREEN}/" | sed "s/$/${NC}/" || echo -e "  ${YELLOW}No keys found${NC}"
         return 1
     fi
     
     # Delete key and public key
-    rm -f "$key_file" "${key_file}.pub"
-    log "INFO" "Key '$name' deleted"
+    if ! rm -f "$key_file" "${key_file}.pub"; then
+        log "ERROR" "Failed to delete key files"
+        echo -e "${RED}Failed to delete key files. Please check permissions:${NC}"
+        echo -e "  Private key: ${GREEN}$key_file${NC}"
+        echo -e "  Public key: ${GREEN}${key_file}.pub${NC}"
+        return 1
+    fi
+    
+    log "INFO" "Successfully deleted key '$name'"
+    echo -e "${GREEN}Key deleted:${NC}"
+    echo -e "  Private key: ${GREEN}$key_file${NC}"
+    echo -e "  Public key: ${GREEN}${key_file}.pub${NC}"
+    return 0
 }
 
 function generate_key() {
@@ -202,18 +362,27 @@ function generate_key() {
     # Validate input
     if [ -z "$name" ]; then
         log "ERROR" "Key name is required"
+        echo -e "${RED}Please specify a name for the new key:${NC}"
+        echo -e "  ${GREEN}s --generate-key <name>${NC}"
         return 1
     fi
     
     # Check if key already exists
     if [ -f "$key_file" ] || [ -f "${key_file}.pub" ]; then
         log "ERROR" "Key '$name' already exists"
+        echo -e "${RED}A key with this name already exists at:${NC}"
+        echo -e "  Private key: ${GREEN}$key_file${NC}"
+        echo -e "  Public key: ${GREEN}${key_file}.pub${NC}"
+        echo -e "To delete the existing key first:"
+        echo -e "  ${GREEN}s --delete-key $name${NC}"
         return 1
     fi
     
     # Create key directory if it doesn't exist
     if ! safe_mkdir "$(dirname "$key_file")" "700"; then
         log "ERROR" "Failed to create key directory"
+        echo -e "${RED}Cannot create directory for key:${NC} $(dirname "$key_file")"
+        echo -e "Please check permissions and try again"
         return 1
     fi
     
@@ -230,6 +399,10 @@ function generate_key() {
             # Generate key
             if ! ssh-keygen -t rsa -b 4096 -f "$key_file" -N "" -C "$USER@$(hostname)"; then
                 log "ERROR" "Failed to generate key"
+                echo -e "${RED}Failed to generate SSH key. Please check:${NC}"
+                echo -e "  1. You have write permission to ${GREEN}$KEYPATH${NC}"
+                echo -e "  2. ssh-keygen is installed and working"
+                echo -e "  3. You have enough disk space"
                 return 1
             fi
         fi
@@ -238,15 +411,30 @@ function generate_key() {
         # Generate key
         if ! ssh-keygen -t rsa -b 4096 -f "$key_file" -N "" -C "$USER@$(hostname)"; then
             log "ERROR" "Failed to generate key"
+            echo -e "${RED}Failed to generate SSH key. Please check:${NC}"
+            echo -e "  1. You have write permission to ${GREEN}$KEYPATH${NC}"
+            echo -e "  2. ssh-keygen is installed and working"
+            echo -e "  3. You have enough disk space"
             return 1
         fi
     fi
     
     # Set permissions
-    chmod 600 "$key_file"
-    chmod 644 "${key_file}.pub"
+    if ! chmod 600 "$key_file"; then
+        log "ERROR" "Failed to set private key permissions"
+        echo -e "${YELLOW}Warning: Could not set correct permissions on private key${NC}"
+        echo -e "Please manually set permissions: ${GREEN}chmod 600 $key_file${NC}"
+    fi
+    if ! chmod 644 "${key_file}.pub"; then
+        log "ERROR" "Failed to set public key permissions"
+        echo -e "${YELLOW}Warning: Could not set correct permissions on public key${NC}"
+        echo -e "Please manually set permissions: ${GREEN}chmod 644 ${key_file}.pub${NC}"
+    fi
     
-    log "INFO" "Key '$name' generated"
+    log "INFO" "Successfully generated key '$name'"
+    echo -e "${GREEN}Key generated:${NC}"
+    echo -e "  Private key: ${GREEN}$key_file${NC}"
+    echo -e "  Public key: ${GREEN}${key_file}.pub${NC}"
     return 0
 }
 
@@ -259,26 +447,48 @@ function create_from_template() {
     # Validate input
     if [ -z "$template" ] || [ -z "$name" ]; then
         log "ERROR" "Template name and configuration name are required"
+        echo -e "${RED}Please specify both template and configuration names:${NC}"
+        echo -e "  ${GREEN}s --from-template <template> <name>${NC}"
+        echo -e "Available templates:"
+        ls -1 "$CONFIGDIR/templates/" 2>/dev/null | sed "s/^/  ${GREEN}/" | sed "s/$/${NC}/" || echo -e "  ${YELLOW}No templates found${NC}"
         return 1
     fi
     
     # Check if template exists
     if [ ! -f "$template_file" ]; then
         log "ERROR" "Template '$template' does not exist"
+        echo -e "${RED}Template not found:${NC} $template_file"
+        echo -e "Available templates:"
+        ls -1 "$CONFIGDIR/templates/" 2>/dev/null | sed "s/^/  ${GREEN}/" | sed "s/$/${NC}/" || echo -e "  ${YELLOW}No templates found${NC}"
         return 1
     fi
     
     # Check if config already exists
     if [ -f "$config_file" ]; then
         log "ERROR" "Configuration '$name' already exists"
+        echo -e "${RED}Configuration already exists at:${NC} $config_file"
+        echo -e "To delete the existing configuration first:"
+        echo -e "  ${GREEN}s --delete $name${NC}"
         return 1
     fi
     
     # Copy template to config, preserving variables
-    cat "$template_file" > "$config_file"
-    chmod 600 "$config_file"
+    if ! cat "$template_file" > "$config_file"; then
+        log "ERROR" "Failed to create configuration from template"
+        echo -e "${RED}Failed to create configuration file. Please check permissions:${NC}"
+        echo -e "  Template: ${GREEN}$template_file${NC}"
+        echo -e "  Target: ${GREEN}$config_file${NC}"
+        return 1
+    fi
     
-    log "INFO" "Configuration '$name' created from template '$template'"
+    if ! chmod 600 "$config_file"; then
+        log "ERROR" "Failed to set configuration file permissions"
+        echo -e "${YELLOW}Warning: Could not set correct permissions on configuration file${NC}"
+        echo -e "Please manually set permissions: ${GREEN}chmod 600 $config_file${NC}"
+    fi
+    
+    log "INFO" "Successfully created configuration '$name' from template '$template'"
+    echo -e "${GREEN}Configuration created:${NC} $config_file"
     return 0
 }
 
@@ -330,16 +540,30 @@ function do_connect() {
     local config="$1"
     
     # Load configuration
-    if [ -f "$CONFIGDIR/$config" ]; then
-        source "$CONFIGDIR/$config"
-    else
+    if [ ! -f "$CONFIGDIR/$config" ]; then
         log "ERROR" "Configuration '$config' not found"
+        echo -e "${RED}Configuration file not found:${NC} $CONFIGDIR/$config"
+        echo -e "Available configurations:"
+        ls -1 "$CONFIGDIR/" 2>/dev/null | grep -v '^templates$' | sed "s/^/  ${GREEN}/" | sed "s/$/${NC}/" || echo -e "  ${YELLOW}No configurations found${NC}"
+        return 1
+    fi
+    
+    # Source configuration
+    if ! source "$CONFIGDIR/$config"; then
+        log "ERROR" "Failed to load configuration '$config'"
+        echo -e "${RED}Error loading configuration file. Please check:${NC}"
+        echo -e "  1. File permissions (should be 600)"
+        echo -e "  2. File syntax (should be valid shell script)"
+        echo -e "  3. File ownership (should be owned by you)"
         return 1
     fi
     
     # Validate required fields
     if [ -z "$HOST" ]; then
         log "ERROR" "HOST is required in configuration"
+        echo -e "${RED}Configuration file is missing required field:${NC} HOST"
+        echo -e "Please edit ${GREEN}$CONFIGDIR/$config${NC} and add:"
+        echo -e "  ${GREEN}HOST=your.hostname.com${NC}"
         return 1
     fi
     
@@ -349,7 +573,7 @@ function do_connect() {
     
     # Execute or print command
     if [ "$DRY_RUN" = true ]; then
-        echo "$ssh_cmd"
+        echo -e "${GREEN}$ssh_cmd${NC}"
     else
         eval "$ssh_cmd"
     fi
@@ -358,75 +582,126 @@ function do_connect() {
 function show_config() {
     if [[ ! -d "$CONFIGDIR" ]]; then
         log "ERROR" "Configuration directory not found"
+        echo -e "${RED}Configuration directory not found:${NC} $CONFIGDIR"
+        echo -e "Please run ${GREEN}s --install home${NC} or ${GREEN}s --install system${NC} first"
         exit $EXIT_ERROR
     fi
     
-    ls -A "$CONFIGDIR" | grep -v template | sort
+    local configs
+    configs=$(ls -1 "$CONFIGDIR/" 2>/dev/null | grep -v '^templates$')
+    
+    if [ -z "$configs" ]; then
+        echo -e "${YELLOW}No configurations found${NC}"
+        echo -e "To create a new configuration:"
+        echo -e "  1. Connect to a host: ${GREEN}s user@host${NC}"
+        echo -e "  2. Save the connection: ${GREEN}s --save <name>${NC}"
+        echo -e "  3. Or use a template: ${GREEN}s --from-template <template> <name>${NC}"
+    else
+        echo -e "${BOLD}Available configurations:${NC}"
+        echo "$configs" | sed "s/^/  ${GREEN}/" | sed "s/$/${NC}/"
+    fi
+    
     exit $EXIT_SUCCESS
 }
 
 function show_usage() {
-    echo "usage: $0 [list|show|help] [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
+    echo -e "${RED}usage:${NC} $0 [list|show|help] [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
     exit $EXIT_ERROR
 }
 
 function show_help() {
     cat >&2 << EOF
-usage: $0 [configuration_name|--save configuration_name][-i identity_file] user@host.com
-———
-s Version $VERSION — An ssh supertool 
+${BOLD}usage:${NC} $0 [configuration_name|--save configuration_name][-i identity_file] user@host.com
+${BOLD}———${NC}
+${BOLD}s Version $VERSION${NC} — An ssh supertool 
 
-usage: s [option]
- s <configuration name> — Load configuration and ssh to remote acct/system
- s show — Show available configurations
- s help — Display this message
+${BOLD}usage:${NC} s [option]
+ ${GREEN}s <configuration name>${NC} — Load configuration and ssh to remote acct/system
+ ${GREEN}s show${NC} — Show available configurations
+ ${GREEN}s help${NC} — Display this message
 
-Configuration Management:
- s --save <name> — Save current connection as a named configuration
- s --delete <name> — Delete a named configuration
- s --from-template <template> <name> — Create configuration from template
- s --generate-key <name> — Generate a new SSH key pair
- s --delete-key <name> — Delete an SSH key pair
+${BOLD}Configuration Management:${NC}
+ ${GREEN}s --save <name>${NC} — Save current connection as a named configuration
+ ${GREEN}s --delete <name>${NC} — Delete a named configuration
+ ${GREEN}s --from-template <template> <name>${NC} — Create configuration from template
+ ${GREEN}s --generate-key <name>${NC} — Generate a new SSH key pair
+ ${GREEN}s --delete-key <name>${NC} — Delete an SSH key pair
 
-Connection Options:
- s --dry-run <name> — Show SSH command without executing
- s --port-forward <local>:<remote> — Enable port forwarding
- s --ssh-agent — Enable SSH agent forwarding
- s --timeout <seconds> — Set connection timeout
- s --retries <count> — Set maximum connection retries
+${BOLD}Connection Options:${NC}
+ ${GREEN}s --dry-run <name>${NC} — Show SSH command without executing
+ ${GREEN}s --port-forward <local>:<remote>${NC} — Enable port forwarding
+ ${GREEN}s --ssh-agent${NC} — Enable SSH agent forwarding
+ ${GREEN}s --timeout <seconds>${NC} — Set connection timeout
+ ${GREEN}s --retries <count>${NC} — Set maximum connection retries
 
-Installation:
- s --install home — Install for current user
- s --install system — Install for all users (requires root)
- s --remove force — Remove s from all locations
+${BOLD}Installation:${NC}
+ ${GREEN}s --install home${NC} — Install for current user
+ ${GREEN}s --install system${NC} — Install for all users (requires root)
+ ${GREEN}s --remove force${NC} — Remove s from all locations
 EOF
     exit $EXIT_SUCCESS
 }
 
 function save_config() {
     if [[ "$OPT_SAVE" == "show" ]]; then
-        log "ERROR" "Configuration name can't be 'show', it's reserved"
+        log "ERROR" "Configuration name can't be 'show'"
+        echo -e "${RED}The name 'show' is reserved. Please choose a different name.${NC}"
         exit $EXIT_INVALID_INPUT
     fi
     
     if ! validate_config_name "$OPT_SAVE"; then
+        echo -e "${RED}Invalid configuration name:${NC} $OPT_SAVE"
+        echo -e "Configuration names must:"
+        echo -e "  1. Start with a letter"
+        echo -e "  2. Contain only letters, numbers, and underscores"
+        echo -e "  3. Not be longer than 64 characters"
         exit $EXIT_INVALID_INPUT
     fi
     
-    log "INFO" "Configuration will be saved as $OPT_SAVE"
+    log "INFO" "Saving configuration as $OPT_SAVE"
     
-    cat > "$CONFIGDIR$OPT_SAVE" << EOF
+    # Create configuration directory if it doesn't exist
+    if ! safe_mkdir "$CONFIGDIR" "700"; then
+        log "ERROR" "Failed to create configuration directory"
+        echo -e "${RED}Cannot create configuration directory:${NC} $CONFIGDIR"
+        echo -e "Please check permissions and try again"
+        exit $EXIT_ERROR
+    fi
+    
+    # Save configuration
+    if ! cat > "$CONFIGDIR$OPT_SAVE" << EOF
 ## Basics
 HOST=$OPT_HOST
 USER=$OPT_USER
 EOF
-    
-    if [[ -n "$OPT_KEYFILE" ]]; then
-        echo '##Keys' >> "$CONFIGDIR$OPT_SAVE"
-        echo "KEYFILE=$OPT_KEYFILE" >> "$CONFIGDIR$OPT_SAVE"
+    then
+        log "ERROR" "Failed to save configuration"
+        echo -e "${RED}Cannot write to configuration file:${NC} $CONFIGDIR$OPT_SAVE"
+        echo -e "Please check permissions and try again"
+        exit $EXIT_ERROR
     fi
     
-    chmod 600 "$CONFIGDIR$OPT_SAVE"
+    if [[ -n "$OPT_KEYFILE" ]]; then
+        if ! echo '##Keys' >> "$CONFIGDIR$OPT_SAVE"; then
+            log "ERROR" "Failed to append key configuration"
+            echo -e "${RED}Cannot append to configuration file. Please check permissions.${NC}"
+            exit $EXIT_ERROR
+        fi
+        if ! echo "KEYFILE=$OPT_KEYFILE" >> "$CONFIGDIR$OPT_SAVE"; then
+            log "ERROR" "Failed to append key file"
+            echo -e "${RED}Cannot append to configuration file. Please check permissions.${NC}"
+            exit $EXIT_ERROR
+        fi
+    fi
+    
+    if ! chmod 600 "$CONFIGDIR$OPT_SAVE"; then
+        log "ERROR" "Failed to set configuration file permissions"
+        echo -e "${YELLOW}Warning: Could not set correct permissions on configuration file${NC}"
+        echo -e "Please manually set permissions: ${GREEN}chmod 600 $CONFIGDIR$OPT_SAVE${NC}"
+    fi
+    
+    log "INFO" "Successfully saved configuration '$OPT_SAVE'"
+    echo -e "${GREEN}Configuration saved to:${NC} $CONFIGDIR$OPT_SAVE"
     exit $EXIT_SUCCESS
 }
 
@@ -436,6 +711,7 @@ function make_key() {
     
     if ! ssh-keygen -b 2048 -f "$temp_key_path$temp_key_name"; then
         log "ERROR" "Failed to generate SSH key"
+        echo -e "${RED}Failed to generate SSH key${NC}"
         exit $EXIT_ERROR
     fi
     
@@ -444,6 +720,7 @@ function make_key() {
     if ! mv "$temp_key_path$temp_key_name" "$KEYPATH$new_key_name" || \
        ! mv "$temp_key_path$temp_key_name.pub" "$KEYPATH$new_key_name.pub"; then
         log "ERROR" "Failed to move generated keys"
+        echo -e "${RED}Failed to move generated keys${NC}"
         exit $EXIT_ERROR
     fi
     
@@ -451,10 +728,12 @@ function make_key() {
     
     if ! chmod 600 "$KEYPATH$new_key_name" "$KEYPATH$new_key_name.pub"; then
         log "ERROR" "Failed to set key permissions"
+        echo -e "${RED}Failed to set key permissions${NC}"
         exit $EXIT_ERROR
     fi
     
     log "INFO" "Your new ssh key is $KEYPATH$new_key_name"
+    echo -e "${GREEN}Your new ssh key is:${NC} $KEYPATH$new_key_name"
     exit $EXIT_SUCCESS
 }
 
@@ -464,10 +743,11 @@ function install_key() {
     
     if [[ -z "$pub_key_string" ]]; then
         log "ERROR" "Failed to read public key"
+        echo -e "${RED}Failed to read public key${NC}"
         exit $EXIT_ERROR
     fi
     
-    echo "$pub_key_string"
+    echo -e "${GREEN}$pub_key_string${NC}"
     
     local ssh_opts=""
     if [[ -n "$OPT_KEYFILE" ]]; then
@@ -476,16 +756,19 @@ function install_key() {
     
     if ! ssh $ssh_opts "$OPT_USER@$OPT_HOST" "mkdir -p ~/.ssh && echo '$pub_key_string' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"; then
         log "ERROR" "Failed to install key on remote host"
+        echo -e "${RED}Failed to install key on remote host${NC}"
         exit $EXIT_ERROR
     fi
     
     OPT_KEYFILE="$KEYPATH$NEWKEYNAME"
+    echo -e "${GREEN}Successfully installed key on remote host${NC}"
     exit $EXIT_SUCCESS
 }
 
 # Check to see if at least one argument was specified
 if [[ $# -lt 1 ]]; then
     log "ERROR" "You must specify at least 1 argument"
+    echo -e "${RED}You must specify at least 1 argument${NC}"
     show_usage
 fi
 
@@ -512,6 +795,8 @@ while getopts h-:i:n: opt; do
                         remove
                     else
                         log "WARNING" "Do you really want to remove s from all likely places? 's --remove force'"
+                        echo -e "${YELLOW}Do you really want to remove s from all likely places?${NC}"
+                        echo -e "Use ${GREEN}s --remove force${NC} to confirm"
                         exit $EXIT_ERROR
                     fi
                     ;;
@@ -577,7 +862,7 @@ shift `expr $OPTIND - 1`
 
 # We want at least one non-option argument. 
 if [ $# -eq 0 ]; then
-    echo $USAGE >&2
+    echo -e "${RED}$USAGE${NC}" >&2
     echo
     show_usage
     exit 1
@@ -603,7 +888,7 @@ if [[ "$1" == *@* ]]; then
     if [[ "$2" != "" ]]; then
       OPT_SAVE=$2
       if [[ $DO_ADDKEY == "yes" ]]; then
-        echo "Do addkey" 
+        echo -e "${BLUE}Do addkey${NC}"
         make_key
         install_key
       fi
@@ -615,9 +900,9 @@ if [[ "$1" == *@* ]]; then
       save_config
       exit 0
     fi
-    echo "s: No configuration name given as argument to --save or as last comand line parameter."
+    echo -e "${RED}s: No configuration name given as argument to --save or as last command line parameter.${NC}"
     exit 1
 fi
 
-# do_connect is safe to call, will error and die pretty if the congiguration doesn't exist.
+# do_connect is safe to call, will error and die pretty if the configuration doesn't exist.
 do_connect "$1"
