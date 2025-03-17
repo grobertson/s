@@ -34,7 +34,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/s-common.sh"
 
-VERSION="0.9.2"
+VERSION="0.9.3"
 CONFIGDIR="$HOME/.s/"
 CONFIGFILE="$HOME/.sconfig"    
 
@@ -138,6 +138,90 @@ function install() {
     esac
 }
 
+function delete_config() {
+    local config_name="$1"
+    
+    if ! validate_config_name "$config_name"; then
+        exit $EXIT_INVALID_INPUT
+    fi
+    
+    local config_file="$CONFIGDIR$config_name"
+    if ! validate_config_file "$config_file"; then
+        exit $EXIT_CONFIG_ERROR
+    fi
+    
+    if ! rm -f "$config_file"; then
+        log "ERROR" "Failed to delete configuration: $config_name"
+        exit $EXIT_ERROR
+    fi
+    
+    log "INFO" "Deleted configuration: $config_name"
+    exit $EXIT_SUCCESS
+}
+
+function delete_key() {
+    local key_name="$1"
+    local key_file="$KEYPATH$key_name"
+    local pub_file="${key_file}.pub"
+    
+    if ! validate_ssh_key "$key_file"; then
+        exit $EXIT_ERROR
+    fi
+    
+    if ! rm -f "$key_file" "$pub_file"; then
+        log "ERROR" "Failed to delete SSH key: $key_name"
+        exit $EXIT_ERROR
+    fi
+    
+    log "INFO" "Deleted SSH key: $key_name"
+    exit $EXIT_SUCCESS
+}
+
+function generate_key() {
+    local key_name="$1"
+    local key_file="$KEYPATH$key_name"
+    
+    if ! ssh-keygen -b 2048 -f "$key_file"; then
+        log "ERROR" "Failed to generate SSH key: $key_name"
+        exit $EXIT_ERROR
+    fi
+    
+    if ! chmod 600 "$key_file" "${key_file}.pub"; then
+        log "ERROR" "Failed to set key permissions"
+        exit $EXIT_ERROR
+    fi
+    
+    log "INFO" "Generated SSH key: $key_name"
+    exit $EXIT_SUCCESS
+}
+
+function create_from_template() {
+    local template_name="$1"
+    local config_name="$2"
+    
+    if ! validate_config_name "$template_name" || ! validate_config_name "$config_name"; then
+        exit $EXIT_INVALID_INPUT
+    fi
+    
+    local template_file="$CONFIGDIR$template_name"
+    local config_file="$CONFIGDIR$config_name"
+    
+    if ! validate_config_file "$template_file"; then
+        exit $EXIT_CONFIG_ERROR
+    fi
+    
+    # Process template with environment variables
+    envsubst < "$template_file" > "$config_file"
+    
+    if ! chmod 600 "$config_file"; then
+        log "ERROR" "Failed to set config file permissions"
+        exit $EXIT_ERROR
+    fi
+    
+    log "INFO" "Created configuration from template: $config_name"
+    exit $EXIT_SUCCESS
+}
+
 function do_connect() {
     local config_name="$1"
     
@@ -162,7 +246,42 @@ function do_connect() {
         exit $EXIT_ERROR
     fi
     
-    ssh -i "$KEYPATH$KEYFILE" "$USER@$HOST"
+    # Build SSH command with options
+    local ssh_opts=()
+    
+    # Add key file if specified
+    if [[ -n "$KEYFILE" ]]; then
+        ssh_opts+=("-i" "$KEYPATH$KEYFILE")
+    fi
+    
+    # Add port forwarding if specified
+    if [[ -n "$LOCAL_PORT" ]] && [[ -n "$REMOTE_PORT" ]]; then
+        ssh_opts+=("-L" "$LOCAL_PORT:localhost:$REMOTE_PORT")
+    fi
+    
+    # Add SSH agent forwarding if enabled
+    if [[ "$USE_SSH_AGENT" == "yes" ]]; then
+        ssh_opts+=("-A")
+    fi
+    
+    # Add connection timeout if specified
+    if [[ -n "$CONNECT_TIMEOUT" ]]; then
+        ssh_opts+=("-o" "ConnectTimeout=$CONNECT_TIMEOUT")
+    fi
+    
+    # Add connection retries if specified
+    if [[ -n "$MAX_RETRIES" ]]; then
+        ssh_opts+=("-o" "ServerAliveCountMax=$MAX_RETRIES")
+    fi
+    
+    # Add dry-run option for testing
+    if [[ "$DRY_RUN" == "yes" ]]; then
+        echo "ssh ${ssh_opts[*]} $USER@$HOST"
+        exit $EXIT_SUCCESS
+    fi
+    
+    # Execute SSH command
+    ssh "${ssh_opts[@]}" "$USER@$HOST"
     exit $EXIT_SUCCESS
 }
 
@@ -191,6 +310,25 @@ usage: s [option]
  s <configuration name> — Load configuration and ssh to remote acct/system
  s show — Show available configurations
  s help — Display this message
+
+Configuration Management:
+ s --save <name> — Save current connection as a named configuration
+ s --delete <name> — Delete a named configuration
+ s --from-template <template> <name> — Create configuration from template
+ s --generate-key <name> — Generate a new SSH key pair
+ s --delete-key <name> — Delete an SSH key pair
+
+Connection Options:
+ s --dry-run <name> — Show SSH command without executing
+ s --port-forward <local>:<remote> — Enable port forwarding
+ s --ssh-agent — Enable SSH agent forwarding
+ s --timeout <seconds> — Set connection timeout
+ s --retries <count> — Set maximum connection retries
+
+Installation:
+ s --install home — Install for current user
+ s --install system — Install for all users (requires root)
+ s --remove force — Remove s from all locations
 EOF
     exit $EXIT_SUCCESS
 }
@@ -317,6 +455,31 @@ while getopts h-:i:n: opt; do
                 install=*)
                     OPT_INSTALL=${OPTARG#*=}
                     install
+                    ;;
+                delete)
+                    OPT_DELETE="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    delete_config "$OPT_DELETE"
+                    ;;
+                delete-key)
+                    OPT_DELETE_KEY="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    delete_key "$OPT_DELETE_KEY"
+                    ;;
+                generate-key)
+                    OPT_GENERATE_KEY="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    generate_key "$OPT_GENERATE_KEY"
+                    ;;
+                from-template)
+                    OPT_TEMPLATE="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    OPT_NEW_CONFIG="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    create_from_template "$OPT_TEMPLATE" "$OPT_NEW_CONFIG"
+                    ;;
+                dry-run)
+                    DRY_RUN="yes"
                     ;;
                 *) show_help ;;
             esac
