@@ -29,233 +29,299 @@
 # of the authors and should not be interpreted as representing official policies, 
 # either expressed or implied, of the FreeBSD Project.
 #
-#
 
-VERSION="0.9.1"
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/s-common.sh"
+
+VERSION="0.9.2"
 CONFIGDIR="$HOME/.s/"
 CONFIGFILE="$HOME/.sconfig"    
 
-if [ ! -d $CONFIGDIR ]; then
-    mkdir $CONFIGDIR
+# Initialize configuration directory and file
+if ! safe_mkdir "$CONFIGDIR" "700"; then
+    log "ERROR" "Failed to initialize configuration directory"
+    exit $EXIT_ERROR
 fi
 
-if [ ! -f $CONFIGFILE ]; then
-  #echo basic config into config file here
-  echo "#s configuration" > $CONFIGFILE
-  echo "#Basic ssh config" >> $CONFIGFILE
-  echo "KEYPATH=$HOME/.ssh/" >> $CONFIGFILE
-  echo "KEYFILE=id_rsa" >> $CONFIGFILE  
+if [[ ! -f "$CONFIGFILE" ]]; then
+    cat > "$CONFIGFILE" << EOF
+# s configuration
+# Basic ssh config
+KEYPATH=$HOME/.ssh/
+KEYFILE=id_rsa
+EOF
+    chmod 600 "$CONFIGFILE"
 fi
 
-if [ -f $CONFIGFILE ]; then
-  source $CONFIGFILE
+if [[ -f "$CONFIGFILE" ]]; then
+    source "$CONFIGFILE"
 fi
 
-function remove {
-  if [ -f "/usr/local/bin/s" ]; then
-    sudo rm -f "/usr/local/bin/s"
-    echo "Removed s from /usr/local/bin/"
-  fi
-  if [ -f "/usr/bin/s" ]; then
-    sudo rm -f "/usr/bin/s"
-    echo "Removed s from /usr/bin/"
-  fi
-  if [ -f "/bin/s" ]; then
-    sudo rm -f "/bin/s"
-    echo "Removed s from /bin/"
-  fi
-  if [ -f $HOME/bin/s ]; then
-    sudo rm -f $HOME/bin/s
-    echo "Removed s from $HOME/bin/"
-  fi
-  exit 0  
+function remove() {
+    local bin_paths=(
+        "/usr/local/bin/s"
+        "/usr/bin/s"
+        "/bin/s"
+        "$HOME/bin/s"
+    )
+    
+    local removed=0
+    for path in "${bin_paths[@]}"; do
+        if [[ -f "$path" ]]; then
+            if sudo -n rm -f "$path" 2>/dev/null; then
+                log "INFO" "Removed s from $path"
+                removed=1
+            else
+                log "WARNING" "Failed to remove s from $path"
+            fi
+        fi
+    done
+    
+    if [[ $removed -eq 0 ]]; then
+        log "ERROR" "Failed to remove s from any location"
+        exit $EXIT_ERROR
+    fi
+    
+    exit $EXIT_SUCCESS
 }
 
-function install {
-  if [[ "$OPT_INSTALL" != "" ]]; then  
+function install() {
+    if [[ -z "$OPT_INSTALL" ]]; then
+        log "ERROR" "Install location not specified"
+        echo "Install where?"
+        echo " Install for this user only:  's --install home'"               
+        echo " Install for all users (requires root):  's --install system'"
+        exit $EXIT_ERROR
+    fi
+    
     case "$OPT_INSTALL" in
         home) 
-          if [ ! -d $HOME/bin ]; then
-            mkdir $HOME/bin
-            chmod 700 $HOME/bin
-          fi
-          cp -f s $HOME/bin/s
-          chmod 700 $HOME/bin/s
-          echo "Installed s to ~/bin/ -- Make sure ~/bin is in your PATH"
-          exit 0
-          ;;
+            if ! safe_mkdir "$HOME/bin" "700"; then
+                log "ERROR" "Failed to create ~/bin directory"
+                exit $EXIT_ERROR
+            fi
+            
+            if ! safe_cp "$SCRIPT_DIR/s" "$HOME/bin/s" "700"; then
+                log "ERROR" "Failed to install s to ~/bin/"
+                exit $EXIT_ERROR
+            fi
+            
+            log "INFO" "Installed s to ~/bin/ -- Make sure ~/bin is in your PATH"
+            exit $EXIT_SUCCESS
+            ;;
         system) 
-          if [ -d "/usr/local/bin" ]; then
-            sudo cp -f s "/usr/local/bin/s"
-            sudo chown root "/usr/local/bin/s"
-            sudo chmod 755 "/usr/local/bin/s"
-            echo "Installed s to /usr/local/bin/"
-            exit 0
-          fi
-          if [ -d "/usr/bin" ]; then
-            sudo cp -f s "/usr/bin/s"
-            sudo chown root "/usr/bin/s"
-            sudo chmod 755 "/usr/bin/s"
-            echo "Installed s to /usr/bin/ (/usr/local/bin doesn't exist!)"
-            exit 0
-          fi
-          if [ -d "/bin" ]; then
-            sudo cp -f s "/bin/s"
-            sudo chown root "/bin/s"
-            sudo chmod 755 "/bin/s"
-            echo "Installed s to /usr/bin/ (/usr/local/bin and /usr/bin/ don't exist!)"
-            exit 0
-          fi
-          echo "Couldn't find a suitable bin directory on this system. Maybe try 's --install home'?"
-          exit 1
-          ;;
+            local bin_paths=(
+                "/usr/local/bin"
+                "/usr/bin"
+                "/bin"
+            )
+            
+            for path in "${bin_paths[@]}"; do
+                if [[ -d "$path" ]]; then
+                    if sudo -n cp -f "$SCRIPT_DIR/s" "$path/s" && \
+                       sudo -n chown root "$path/s" && \
+                       sudo -n chmod 755 "$path/s"; then
+                        log "INFO" "Installed s to $path/"
+                        exit $EXIT_SUCCESS
+                    fi
+                fi
+            done
+            
+            log "ERROR" "Couldn't find a suitable bin directory on this system. Maybe try 's --install home'?"
+            exit $EXIT_ERROR
+            ;;
         *) 
-          echo "Install must be either 'home' or 'system'."
-          exit 1;;
+            log "ERROR" "Install must be either 'home' or 'system'"
+            exit $EXIT_INVALID_INPUT
+            ;;
     esac
-  fi
-  echo "Install where?"
-  echo " Install for this user only:  's --install home'"               
-  echo " Install for all users (requires root):  's --install system'"
-  exit 1
 }
 
 function do_connect() {
-    list=(`ls -A $CONFIGDIR | sort`)
-    for filename in "${list[@]}"
-    do
-      if [[ "$1" == $filename ]]; then
-        source $CONFIGDIR$1
-        # rub out keypath for the moment. fix later.
-        KEYPATH=""
-        ssh -i $KEYPATH$KEYFILE $USER@$HOST
-        exit 0
-      fi
-    done
-    echo "s: No configuration named $1. Perhaps you should --save one?"
+    local config_name="$1"
+    
+    if ! validate_config_name "$config_name"; then
+        exit $EXIT_INVALID_INPUT
+    fi
+    
+    local config_file="$CONFIGDIR$config_name"
+    if ! validate_config_file "$config_file"; then
+        exit $EXIT_CONFIG_ERROR
+    fi
+    
+    source "$config_file"
+    
+    if [[ -n "$KEYFILE" ]]; then
+        if ! validate_ssh_key "$KEYPATH$KEYFILE"; then
+            exit $EXIT_ERROR
+        fi
+    fi
+    
+    if ! validate_ssh_connection "$USER" "$HOST" "$KEYPATH$KEYFILE"; then
+        exit $EXIT_ERROR
+    fi
+    
+    ssh -i "$KEYPATH$KEYFILE" "$USER@$HOST"
+    exit $EXIT_SUCCESS
 }
 
-function show_config {
-    ls -A $CONFIGDIR | grep -v template | sort
-    exit
+function show_config() {
+    if [[ ! -d "$CONFIGDIR" ]]; then
+        log "ERROR" "Configuration directory not found"
+        exit $EXIT_ERROR
+    fi
+    
+    ls -A "$CONFIGDIR" | grep -v template | sort
+    exit $EXIT_SUCCESS
 }
 
-function show_usage {
+function show_usage() {
     echo "usage: $0 [list|show|help] [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
+    exit $EXIT_ERROR
 }
 
-function show_help {
-    echo "usage: $0 [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
-    echo "———" >&2
-    echo "s Version $VERSION — An ssh supertool " >&2
-    echo    
-    echo "usage: s [option]" >&2
-    echo " s <configuration name> — Load configuration and ssh to remote acct/system" >&2
-    echo " s show — Show available configurations" >&2
-    echo " s help — Display this message" >&2
-    exit
+function show_help() {
+    cat >&2 << EOF
+usage: $0 [configuration_name|--save configuration_name][-i identity_file] user@host.com
+———
+s Version $VERSION — An ssh supertool 
+
+usage: s [option]
+ s <configuration name> — Load configuration and ssh to remote acct/system
+ s show — Show available configurations
+ s help — Display this message
+EOF
+    exit $EXIT_SUCCESS
 }
 
-function save_config {
-  if [[ "$OPT_SAVE" == "show" ]] ; then
-    echo "s: Configuration name can't be $OPT_SAVE, it's reserved. Sorry."
-    exit 1
-  fi
-  echo "s: Configuration will be saved as $OPT_SAVE"
-  echo "## Basics" > $CONFIGDIR$OPT_SAVE
-  echo "HOST=$OPT_HOST" >> $CONFIGDIR$OPT_SAVE 
-  echo "USER=$OPT_USER" >> $CONFIGDIR$OPT_SAVE                                     
-  if [[ "$OPT_KEYFILE" != "" ]] ; then
-    echo '##Keys' >> $CONFIGDIR$OPT_SAVE
-    echo "KEYFILE=$OPT_KEYFILE" >> $CONFIGDIR$OPT_SAVE
-    #Currently unused, use fullpath in KEYFILE for now
-    #echo '#KEYPATH=".ssh/"' >> $CONFIGDIR$OPT_SAVE
-  fi
+function save_config() {
+    if [[ "$OPT_SAVE" == "show" ]]; then
+        log "ERROR" "Configuration name can't be 'show', it's reserved"
+        exit $EXIT_INVALID_INPUT
+    fi
+    
+    if ! validate_config_name "$OPT_SAVE"; then
+        exit $EXIT_INVALID_INPUT
+    fi
+    
+    log "INFO" "Configuration will be saved as $OPT_SAVE"
+    
+    cat > "$CONFIGDIR$OPT_SAVE" << EOF
+## Basics
+HOST=$OPT_HOST
+USER=$OPT_USER
+EOF
+    
+    if [[ -n "$OPT_KEYFILE" ]]; then
+        echo '##Keys' >> "$CONFIGDIR$OPT_SAVE"
+        echo "KEYFILE=$OPT_KEYFILE" >> "$CONFIGDIR$OPT_SAVE"
+    fi
+    
+    chmod 600 "$CONFIGDIR$OPT_SAVE"
+    exit $EXIT_SUCCESS
 }
 
-function make_key {
-  # Could use more options, but works for making a simple 2048 bit key with or without passphrase
-  TEMPKEYNAME=_s_temp_key
-  TEMPKEYPATH=$KEYPATH
-  ssh-keygen -b 2048 -f $TEMPKEYPATH$TEMPKEYNAME
-  NEWKEYNAME=`shasum $TEMPKEYPATH$TEMPKEYNAME  | awk '{ print $1 }'`
-  mv $TEMPKEYPATH$TEMPKEYNAME $KEYPATH$NEWKEYNAME
-  mv $TEMPKEYPATH$TEMPKEYNAME.pub $KEYPATH$NEWKEYNAME.pub
-  rm -f $TEMPKEYPATH$TEMPKEYNAME
-  rm -f $TEMPKEYPATH$TEMPKEYNAME.pub
-  chmod 600 $KEYPATH$NEWKEYNAME
-  chmod 600 $KEYPATH$NEWKEYNAME.pub
-  echo "Your new ssh key is $KEYPATH$NEWKEYNAME"
-
+function make_key() {
+    local temp_key_name="_s_temp_key"
+    local temp_key_path="$KEYPATH"
+    
+    if ! ssh-keygen -b 2048 -f "$temp_key_path$temp_key_name"; then
+        log "ERROR" "Failed to generate SSH key"
+        exit $EXIT_ERROR
+    fi
+    
+    local new_key_name=$(shasum "$temp_key_path$temp_key_name" | awk '{ print $1 }')
+    
+    if ! mv "$temp_key_path$temp_key_name" "$KEYPATH$new_key_name" || \
+       ! mv "$temp_key_path$temp_key_name.pub" "$KEYPATH$new_key_name.pub"; then
+        log "ERROR" "Failed to move generated keys"
+        exit $EXIT_ERROR
+    fi
+    
+    rm -f "$temp_key_path$temp_key_name" "$temp_key_path$temp_key_name.pub"
+    
+    if ! chmod 600 "$KEYPATH$new_key_name" "$KEYPATH$new_key_name.pub"; then
+        log "ERROR" "Failed to set key permissions"
+        exit $EXIT_ERROR
+    fi
+    
+    log "INFO" "Your new ssh key is $KEYPATH$new_key_name"
+    exit $EXIT_SUCCESS
 }
 
-function install_key {
-  PUBKEYSTRING=`cat $KEYPATH$NEWKEYNAME.pub`
-  echo $PUBKEYSTRING
-  #If an existing key was supplied, try it. If not ssh should ask for password
-  if [[ $OPT_KEYFILE != "" ]]; then
-    IOPT=" -i $OPT_KEYFILE "
-  fi
-  ssh $IOPT $OPT_USER@$OPT_HOST "echo '$PUBKEYSTRING' >> .ssh/authorized_keys"
-  OPT_KEYFILE=$KEYPATH$NEWKEYNAME
+function install_key() {
+    local pub_key_string
+    pub_key_string=$(cat "$KEYPATH$NEWKEYNAME.pub")
+    
+    if [[ -z "$pub_key_string" ]]; then
+        log "ERROR" "Failed to read public key"
+        exit $EXIT_ERROR
+    fi
+    
+    echo "$pub_key_string"
+    
+    local ssh_opts=""
+    if [[ -n "$OPT_KEYFILE" ]]; then
+        ssh_opts="-i $OPT_KEYFILE"
+    fi
+    
+    if ! ssh $ssh_opts "$OPT_USER@$OPT_HOST" "mkdir -p ~/.ssh && echo '$pub_key_string' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"; then
+        log "ERROR" "Failed to install key on remote host"
+        exit $EXIT_ERROR
+    fi
+    
+    OPT_KEYFILE="$KEYPATH$NEWKEYNAME"
+    exit $EXIT_SUCCESS
 }
 
-#Check to see if at least one argument was specified
-if [ $# -lt 1 ] ; then
-   echo "s: You must specify at least 1 argument."
-   show_usage
-   exit 1
+# Check to see if at least one argument was specified
+if [[ $# -lt 1 ]]; then
+    log "ERROR" "You must specify at least 1 argument"
+    show_usage
 fi
- 
-#Process arguments
-while getopts h-:i:n: opt
-do
-   case "$opt" in
-      h) show_help;;
-      i) OPT_KEYFILE=$OPTARG;;
-      \?) show_help;;
-      -)
-        case "${OPTARG}" in
-            save)
-                OPT_SAVE="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                ;;
-            save=*)
-                OPT_SAVE=${OPTARG#*=}
-                opt=${OPTARG%=$val}
-                ;;
-            remove)
-                OPT_INSTALL="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                if [[ $OPT_INSTALL == "force" ]]; then
-                  remove
-                  exit 0
-                fi
-                echo "Do you really want to remove s from all likely places? 's --remove force'"
-                exit 1
-                ;;
-            help) 
-                show_help
-                ;;
-            addkey)
-                DO_ADDKEY="yes"
-                ;;
-            install)
-                OPT_INSTALL="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                install
-                exit 0
-                ;;
-            install=*)
-                OPT_INSTALL=${OPTARG#*=}
-                install
-                exit 0
-                ;;
-            *)
-                if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
-                    echo "s: Unknown option --${OPTARG}" >&2
-                    exit 1
-                fi
-                ;;
-        esac;;
-   esac
+
+# Process arguments
+while getopts h-:i:n: opt; do
+    case "$opt" in
+        h) show_help ;;
+        i) OPT_KEYFILE="$OPTARG" ;;
+        \?) show_help ;;
+        -)
+            case "${OPTARG}" in
+                save)
+                    OPT_SAVE="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    ;;
+                save=*)
+                    OPT_SAVE=${OPTARG#*=}
+                    opt=${OPTARG%=$val}
+                    ;;
+                remove)
+                    OPT_INSTALL="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    if [[ "$OPT_INSTALL" == "force" ]]; then
+                        remove
+                    else
+                        log "WARNING" "Do you really want to remove s from all likely places? 's --remove force'"
+                        exit $EXIT_ERROR
+                    fi
+                    ;;
+                help) show_help ;;
+                addkey) DO_ADDKEY="yes" ;;
+                install)
+                    OPT_INSTALL="${!OPTIND}"
+                    OPTIND=$((OPTIND + 1))
+                    install
+                    ;;
+                install=*)
+                    OPT_INSTALL=${OPTARG#*=}
+                    install
+                    ;;
+                *) show_help ;;
+            esac
+            ;;
+    esac
 done
 
 # Remove the switches we parsed above.
