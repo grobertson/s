@@ -1,76 +1,88 @@
-s
-=
+# SSH Connection Manager (s)
 
-s is the dead-simple command line ssh configuration management tool you've always wanted. Built to do one thing well—remember ssh connections and recall them as simple, single word configuration aliases. Written in bash and licensed as freeBSD so you can use it nearly everywhere.  
+A powerful and user-friendly SSH connection manager that simplifies server access and key management.
 
-Installing s:
+## Features
 
-One-line auto-install latest version from github:
+- Easy server connection management
+- SSH key generation and management
+- Template-based configuration
+- Port forwarding support
+- Connection retry mechanism
+- ANSI color-coded output
+- Comprehensive error handling
 
-	wget -O- https://raw.github.com/grobertson/s/master/bin/s -O /tmp/s && cd /tmp && chmod 700 /tmp/s && ./s --install system && rm -f /tmp/s
+## Installation
 
-	cd /tmp && wget -O- https://github.com/grobertson/s/archive/master.tar.gz | tar xz && cd s-master && make install && cd -
-	
-From this directory:
+```bash
+# Clone the repository
+git clone https://github.com/groberts/s.git
+cd s
 
-To install s for just the current user:
+# Install
+make install
+```
 
- ./s --install home   
+## Configuration
 
-To install s for everyone (requires root, or at least write permissions on /usr/local/bin):
+The tool uses a configuration file located at `~/.sconfig`. A default configuration will be created on first run:
 
- ./s --install system   
+```bash
+# s configuration
+KEYPATH=~/.ssh
+KEYFILE=id_rsa
+```
 
-Removing s:
+## Usage
 
-./s --remove force
+```bash
+# Connect to a server
+s server-name
 
-Usage:
+# Generate a new SSH key
+s keygen
 
-	usage: s [configuration_name|--save configuration_name][-i identity_file] user@host.com
-	s show — Show available configurations
-	s list — Show available configurations
-	s <configuration_name> — Load configuration and ssh to remote acct/system
-	s help — Display this message
+# List available servers
+s list
 
-CHANGELOG:
+# Add a new server
+s add server-name
 
-5/20/2012
-    
-	*Option to create/install/save a new 2048 bit keypair on a remote host 
-	*'s --addkey [-i existing_keyfile] user@host.com NewConfigName' (no -i will prompt for password) 
-	*Self install './s --install (home|system)' 
-	*system option to --install uses least privledged bin ("/usr/local/bin/", "/usr/bin/", "/bin/" in order)
-	*Self uninstall './s --remove force' Removes from all likely places (home, local, user, /bin)
-	*Added INSTALL file
-	*Added install directions to README
-	
-5/19/2012
+# Remove a server
+s remove server-name
 
-	*freeBSD license added
-	*create a new configuration by connecting once and passing a name to --save option
-	*Humanized error when configuration name doesn't exist
-	*ssh option -i recognition/handling
-	*config moved to ~/.s and ~/.sconfig, autocreates
+# Show help
+s help
+```
 
-5/17/2012
+## Development
 
-	*"show" and "list" are now interchangeable
-	*Hide the "template" configuration from the show/list function
+### Prerequisites
 
+- Bash 4.0 or higher
+- SSH client
+- Make
 
-4/22/2012
+### Running Tests
 
-	*show, help and connect functions
-	*include a template for basic configurations
+```bash
+make test
+```
 
-TO-DO:
+### Code Style
 
-	*clone config from remote with s installed
-	*more complete coverage of ssh options (port forwarding first!)
-	*list/delete/replace keys in ~/.ssh/
-	*list/delete/replace keys on the remote
-	*Needs a "delete" command
+This project follows the [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html).
 
-	
+## License
+
+BSD License - See LICENSE file for details
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a new Pull Request
+
 

@@ -29,281 +29,167 @@
 # of the authors and should not be interpreted as representing official policies, 
 # either expressed or implied, of the FreeBSD Project.
 #
-#
 
-VERSION="0.9.1"
-CONFIGDIR="$HOME/.s/"
-CONFIGFILE="$HOME/.sconfig"    
+# Source common functions and modules
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/config.sh"
+source "$SCRIPT_DIR/../lib/key.sh"
+source "$SCRIPT_DIR/../lib/connection.sh"
 
-if [ ! -d $CONFIGDIR ]; then
-    mkdir $CONFIGDIR
-fi
+# Initialize configuration
+init_config "$CONFIGDIR" "$CONFIGFILE"
 
-if [ ! -f $CONFIGFILE ]; then
-  #echo basic config into config file here
-  echo "#s configuration" > $CONFIGFILE
-  echo "#Basic ssh config" >> $CONFIGFILE
-  echo "KEYPATH=$HOME/.ssh/" >> $CONFIGFILE
-  echo "KEYFILE=id_rsa" >> $CONFIGFILE  
-fi
+# Load configuration
+load_config "$CONFIGFILE"
 
-if [ -f $CONFIGFILE ]; then
-  source $CONFIGFILE
-fi
-
-function remove {
-  if [ -f "/usr/local/bin/s" ]; then
-    sudo rm -f "/usr/local/bin/s"
-    echo "Removed s from /usr/local/bin/"
-  fi
-  if [ -f "/usr/bin/s" ]; then
-    sudo rm -f "/usr/bin/s"
-    echo "Removed s from /usr/bin/"
-  fi
-  if [ -f "/bin/s" ]; then
-    sudo rm -f "/bin/s"
-    echo "Removed s from /bin/"
-  fi
-  if [ -f $HOME/bin/s ]; then
-    sudo rm -f $HOME/bin/s
-    echo "Removed s from $HOME/bin/"
-  fi
-  exit 0  
-}
-
-function install {
-  if [[ "$OPT_INSTALL" != "" ]]; then  
-    case "$OPT_INSTALL" in
-        home) 
-          if [ ! -d $HOME/bin ]; then
-            mkdir $HOME/bin
-            chmod 700 $HOME/bin
-          fi
-          cp -f s $HOME/bin/s
-          chmod 700 $HOME/bin/s
-          echo "Installed s to ~/bin/ -- Make sure ~/bin is in your PATH"
-          exit 0
-          ;;
-        system) 
-          if [ -d "/usr/local/bin" ]; then
-            sudo cp -f s "/usr/local/bin/s"
-            sudo chown root "/usr/local/bin/s"
-            sudo chmod 755 "/usr/local/bin/s"
-            echo "Installed s to /usr/local/bin/"
-            exit 0
-          fi
-          if [ -d "/usr/bin" ]; then
-            sudo cp -f s "/usr/bin/s"
-            sudo chown root "/usr/bin/s"
-            sudo chmod 755 "/usr/bin/s"
-            echo "Installed s to /usr/bin/ (/usr/local/bin doesn't exist!)"
-            exit 0
-          fi
-          if [ -d "/bin" ]; then
-            sudo cp -f s "/bin/s"
-            sudo chown root "/bin/s"
-            sudo chmod 755 "/bin/s"
-            echo "Installed s to /usr/bin/ (/usr/local/bin and /usr/bin/ don't exist!)"
-            exit 0
-          fi
-          echo "Couldn't find a suitable bin directory on this system. Maybe try 's --install home'?"
-          exit 1
-          ;;
-        *) 
-          echo "Install must be either 'home' or 'system'."
-          exit 1;;
+# Command line argument parsing
+parse_args() {
+    local cmd="$1"
+    shift
+    
+    case "$cmd" in
+        "connect"|"c")
+            local host="$1"
+            local user="$2"
+            local key_file="$KEYPATH/$KEYFILE"
+            local port="$3"
+            local port_forward="$4"
+            
+            if [ -z "$host" ] || [ -z "$user" ]; then
+                show_usage
+                exit $EXIT_INVALID_ARGS
+            fi
+            
+            connect "$host" "$user" "$key_file" "$port" "$CONNECT_TIMEOUT" "$MAX_RETRIES" "$port_forward"
+            ;;
+            
+        "keygen"|"k")
+            local key_type="$1"
+            local key_size="$2"
+            local comment="$3"
+            
+            generate_key "$KEYPATH" "$KEYFILE" "$key_type" "$key_size" "$comment"
+            ;;
+            
+        "list"|"l")
+            list_keys "$KEYPATH"
+            ;;
+            
+        "delete"|"d")
+            local key_file="$1"
+            
+            if [ -z "$key_file" ]; then
+                show_usage
+                exit $EXIT_INVALID_ARGS
+            fi
+            
+            delete_key "$KEYPATH" "$key_file"
+            ;;
+            
+        "test"|"t")
+            local host="$1"
+            local user="$2"
+            
+            if [ -z "$host" ] || [ -z "$user" ]; then
+                show_usage
+                exit $EXIT_INVALID_ARGS
+            fi
+            
+            test_connection "$host" "$user" "$KEYPATH/$KEYFILE"
+            ;;
+            
+        "status"|"s")
+            local host="$1"
+            local user="$2"
+            
+            if [ -z "$host" ] || [ -z "$user" ]; then
+                show_usage
+                exit $EXIT_INVALID_ARGS
+            fi
+            
+            get_connection_status "$host" "$user" "$KEYPATH/$KEYFILE"
+            ;;
+            
+        "forward"|"f")
+            local local_port="$1"
+            local remote_host="$2"
+            local remote_port="$3"
+            local user="$4"
+            
+            if [ -z "$local_port" ] || [ -z "$remote_host" ] || [ -z "$remote_port" ] || [ -z "$user" ]; then
+                show_usage
+                exit $EXIT_INVALID_ARGS
+            fi
+            
+            setup_port_forward "$local_port" "$remote_host" "$remote_port" "$user" "$KEYPATH/$KEYFILE"
+            ;;
+            
+        "stop"|"x")
+            local local_port="$1"
+            
+            if [ -z "$local_port" ]; then
+                show_usage
+                exit $EXIT_INVALID_ARGS
+            fi
+            
+            stop_port_forward "$local_port"
+            ;;
+            
+        "config"|"cfg")
+            local key="$1"
+            local value="$2"
+            
+            if [ -z "$key" ]; then
+                list_config "$CONFIGFILE"
+            elif [ -z "$value" ]; then
+                get_config "$CONFIGFILE" "$key"
+            else
+                save_config "$CONFIGFILE" "$key" "$value"
+            fi
+            ;;
+            
+        "help"|"h"|"--help"|"-h")
+            show_usage
+            ;;
+            
+        *)
+            show_usage
+            exit $EXIT_INVALID_ARGS
+            ;;
     esac
-  fi
-  echo "Install where?"
-  echo " Install for this user only:  's --install home'"               
-  echo " Install for all users (requires root):  's --install system'"
-  exit 1
 }
 
-function do_connect() {
-    list=(`ls -A $CONFIGDIR | sort`)
-    for filename in "${list[@]}"
-    do
-      if [[ "$1" == $filename ]]; then
-        source $CONFIGDIR$1
-        # rub out keypath for the moment. fix later.
-        KEYPATH=""
-        ssh -i $KEYPATH$KEYFILE $USER@$HOST
-        exit 0
-      fi
-    done
-    echo "s: No configuration named $1. Perhaps you should --save one?"
-}
-
-function show_config {
-    ls -A $CONFIGDIR | grep -v template | sort
-    exit
-}
-
-function show_usage {
-    echo "usage: $0 [list|show|help] [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
-}
-
-function show_help {
-    echo "usage: $0 [configuration_name|--save configuration_name][-i identity_file] user@host.com" >&2
-    echo "———" >&2
-    echo "s Version $VERSION — An ssh supertool " >&2
-    echo    
-    echo "usage: s [option]" >&2
-    echo " s <configuration name> — Load configuration and ssh to remote acct/system" >&2
-    echo " s show — Show available configurations" >&2
-    echo " s help — Display this message" >&2
-    exit
-}
-
-function save_config {
-  if [[ "$OPT_SAVE" == "show" ]] ; then
-    echo "s: Configuration name can't be $OPT_SAVE, it's reserved. Sorry."
-    exit 1
-  fi
-  echo "s: Configuration will be saved as $OPT_SAVE"
-  echo "## Basics" > $CONFIGDIR$OPT_SAVE
-  echo "HOST=$OPT_HOST" >> $CONFIGDIR$OPT_SAVE 
-  echo "USER=$OPT_USER" >> $CONFIGDIR$OPT_SAVE                                     
-  if [[ "$OPT_KEYFILE" != "" ]] ; then
-    echo '##Keys' >> $CONFIGDIR$OPT_SAVE
-    echo "KEYFILE=$OPT_KEYFILE" >> $CONFIGDIR$OPT_SAVE
-    #Currently unused, use fullpath in KEYFILE for now
-    #echo '#KEYPATH=".ssh/"' >> $CONFIGDIR$OPT_SAVE
-  fi
-}
-
-function make_key {
-  # Could use more options, but works for making a simple 2048 bit key with or without passphrase
-  TEMPKEYNAME=_s_temp_key
-  TEMPKEYPATH=$KEYPATH
-  ssh-keygen -b 2048 -f $TEMPKEYPATH$TEMPKEYNAME
-  NEWKEYNAME=`shasum $TEMPKEYPATH$TEMPKEYNAME  | awk '{ print $1 }'`
-  mv $TEMPKEYPATH$TEMPKEYNAME $KEYPATH$NEWKEYNAME
-  mv $TEMPKEYPATH$TEMPKEYNAME.pub $KEYPATH$NEWKEYNAME.pub
-  rm -f $TEMPKEYPATH$TEMPKEYNAME
-  rm -f $TEMPKEYPATH$TEMPKEYNAME.pub
-  chmod 600 $KEYPATH$NEWKEYNAME
-  chmod 600 $KEYPATH$NEWKEYNAME.pub
-  echo "Your new ssh key is $KEYPATH$NEWKEYNAME"
-
-}
-
-function install_key {
-  PUBKEYSTRING=`cat $KEYPATH$NEWKEYNAME.pub`
-  echo $PUBKEYSTRING
-  #If an existing key was supplied, try it. If not ssh should ask for password
-  if [[ $OPT_KEYFILE != "" ]]; then
-    IOPT=" -i $OPT_KEYFILE "
-  fi
-  ssh $IOPT $OPT_USER@$OPT_HOST "echo '$PUBKEYSTRING' >> .ssh/authorized_keys"
-  OPT_KEYFILE=$KEYPATH$NEWKEYNAME
-}
-
-#Check to see if at least one argument was specified
-if [ $# -lt 1 ] ; then
-   echo "s: You must specify at least 1 argument."
-   show_usage
-   exit 1
-fi
- 
-#Process arguments
-while getopts h-:i:n: opt
-do
-   case "$opt" in
-      h) show_help;;
-      i) OPT_KEYFILE=$OPTARG;;
-      \?) show_help;;
-      -)
-        case "${OPTARG}" in
-            save)
-                OPT_SAVE="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                ;;
-            save=*)
-                OPT_SAVE=${OPTARG#*=}
-                opt=${OPTARG%=$val}
-                ;;
-            remove)
-                OPT_INSTALL="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                if [[ $OPT_INSTALL == "force" ]]; then
-                  remove
-                  exit 0
-                fi
-                echo "Do you really want to remove s from all likely places? 's --remove force'"
-                exit 1
-                ;;
-            help) 
-                show_help
-                ;;
-            addkey)
-                DO_ADDKEY="yes"
-                ;;
-            install)
-                OPT_INSTALL="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                install
-                exit 0
-                ;;
-            install=*)
-                OPT_INSTALL=${OPTARG#*=}
-                install
-                exit 0
-                ;;
-            *)
-                if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
-                    echo "s: Unknown option --${OPTARG}" >&2
-                    exit 1
-                fi
-                ;;
-        esac;;
-   esac
-done
-
-# Remove the switches we parsed above.
-shift `expr $OPTIND - 1`
-
-# We want at least one non-option argument. 
-if [ $# -eq 0 ]; then
-    echo $USAGE >&2
+# Show usage information
+show_usage() {
+    echo -e "${BOLD}Usage:${NC}"
+    echo -e "  ${CYAN}s connect${NC} <host> <user> [port] [port_forward]  # Connect to a remote host"
+    echo -e "  ${CYAN}s keygen${NC} [type] [size] [comment]              # Generate a new SSH key"
+    echo -e "  ${CYAN}s list${NC}                                        # List available SSH keys"
+    echo -e "  ${CYAN}s delete${NC} <key_file>                          # Delete an SSH key"
+    echo -e "  ${CYAN}s test${NC} <host> <user>                         # Test SSH connection"
+    echo -e "  ${CYAN}s status${NC} <host> <user>                       # Check connection status"
+    echo -e "  ${CYAN}s forward${NC} <local_port> <remote_host> <remote_port> <user>  # Setup port forwarding"
+    echo -e "  ${CYAN}s stop${NC} <local_port>                          # Stop port forwarding"
+    echo -e "  ${CYAN}s config${NC} [key] [value]                       # Manage configuration"
+    echo -e "  ${CYAN}s help${NC}                                       # Show this help message"
     echo
-    show_usage
-    exit 1
-fi
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${DIM}s connect example.com user${NC}"
+    echo -e "  ${DIM}s keygen rsa 4096 "My Key"${NC}"
+    echo -e "  ${DIM}s forward 8080 example.com 80 user${NC}"
+    echo -e "  ${DIM}s config KEYPATH ~/.ssh${NC}"
+}
 
-#The original dash-less command args. Don't add to these anymore.
-case "$1" in
-   help) show_help;;
-   show) show_config;;
-   list) show_config;;
-esac 
-
-#now that all that's out of the way...
-
-# Is this arg a user/host combo? 
-if [[ "$1" == *@* ]]; then
-    OIFS=$IFS
-    IFS='@'
-    arr=($1)
-    OPT_USER=${arr[0]}
-    OPT_HOST=${arr[1]}
-    IFS=$OIFScd
-    if [[ "$2" != "" ]]; then
-      OPT_SAVE=$2
-      if [[ $DO_ADDKEY == "yes" ]]; then
-        echo "Do addkey" 
-        make_key
-        install_key
-      fi
+# Main entry point
+main() {
+    if [ $# -eq 0 ]; then
+        show_usage
+        exit $EXIT_INVALID_ARGS
     fi
-    # just do a connection here? remind user to save? 
-    # what should this behavior be? "save(y/n), name:?"
-    # right now, warn and die, assuming user will want to up arrow and add a name to the last command line
-    if [[ "$OPT_SAVE" != "" ]]; then
-      save_config
-      exit 0
-    fi
-    echo "s: No configuration name given as argument to --save or as last comand line parameter."
-    exit 1
-fi
+    
+    parse_args "$@"
+}
 
-# do_connect is safe to call, will error and die pretty if the congiguration doesn't exist.
-do_connect $1
+# Execute main function with all arguments
+main "$@"
