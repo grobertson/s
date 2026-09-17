@@ -7,7 +7,7 @@ Installing s:
 
 One-line auto-install latest version from github:
 
-	wget -O- https://raw.github.com/grobertson/s/master/bin/s -O /tmp/s && cd /tmp && chmod 700 /tmp/s && ./s --install system && rm -f /tmp/s
+	wget -O /tmp/s https://raw.github.com/grobertson/s/master/bin/s && cd /tmp && chmod 700 /tmp/s && ./s --install system && rm -f /tmp/s
 
 	cd /tmp && wget -O- https://github.com/grobertson/s/archive/master.tar.gz | tar xz && cd s-master && make install && cd -
 	
@@ -71,6 +71,3 @@ TO-DO:
 	*list/delete/replace keys in ~/.ssh/
 	*list/delete/replace keys on the remote
 	*Needs a "delete" command
-
-	
-
